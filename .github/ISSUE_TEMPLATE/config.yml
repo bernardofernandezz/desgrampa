@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Vulnerabilidade de segurança
+    url: https://github.com/bernardofernandezz/desgrampa/security/advisories/new
+    about: Relate de forma privada — não abra issue pública.
+  - name: Acho que meu celular está sendo vigiado
+    url: https://www.accessnow.org/help/
+    about: Access Now Digital Security Helpline (gratuita, atende em português).

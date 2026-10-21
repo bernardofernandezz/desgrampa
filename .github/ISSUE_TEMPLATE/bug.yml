@@ -1,0 +1,40 @@
+name: Problema no Desgrampa
+description: Algo não funciona como deveria (erro, travamento, falso positivo/negativo).
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Precisa de ajuda com um celular que pode estar comprometido?** Este não é o lugar —
+        procure a [Access Now Helpline](https://www.accessnow.org/help/) ou, no Brasil, o Ligue 180.
+  - type: checkboxes
+    id: privacidade
+    attributes:
+      label: Privacidade
+      options:
+        - label: Não anexei relatórios, prints com contas/números, saídas de `adb` nem nomes de pessoas.
+          required: true
+  - type: input
+    id: versao
+    attributes:
+      label: Versão
+      description: Saída de `desgrampa --version`
+    validations:
+      required: true
+  - type: input
+    id: ambiente
+    attributes:
+      label: Ambiente
+      placeholder: "Arch Linux, Python 3.12, Samsung com Android 14 / One UI 6.1"
+  - type: textarea
+    id: descricao
+    attributes:
+      label: O que aconteceu e o que você esperava
+    validations:
+      required: true
+  - type: textarea
+    id: erro
+    attributes:
+      label: Mensagem de erro (se houver)
+      description: Revise e apague qualquer dado pessoal antes de colar.
+      render: text

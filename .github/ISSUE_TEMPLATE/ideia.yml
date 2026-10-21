@@ -1,0 +1,15 @@
+name: Sugestão
+description: Nova verificação, melhoria na interface ou na documentação.
+labels: [melhoria]
+body:
+  - type: textarea
+    id: ideia
+    attributes:
+      label: O que você sugere e qual problema resolve
+    validations:
+      required: true
+  - type: textarea
+    id: referencias
+    attributes:
+      label: Referências
+      description: Relatórios de pesquisa, indicadores públicos, documentação do Android…
