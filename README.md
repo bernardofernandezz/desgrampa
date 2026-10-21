@@ -82,14 +82,14 @@ sudo apt install adb                # Debian/Ubuntu
 brew install android-platform-tools # macOS
 
 # Desgrampa (com o MVT para a varredura completa)
-pipx install "desgrampa[forense] @ git+https://github.com/SEU-USUARIO/desgrampa"
+pipx install "desgrampa[forense] @ git+https://github.com/bernardofernandezz/desgrampa"
 ```
 
 <details>
 <summary>A partir do código-fonte</summary>
 
 ```bash
-git clone https://github.com/SEU-USUARIO/desgrampa && cd desgrampa
+git clone https://github.com/bernardofernandezz/desgrampa && cd desgrampa
 python -m venv .venv
 .venv/bin/pip install -e ".[forense]"
 .venv/bin/desgrampa
@@ -173,7 +173,7 @@ certificates, proxies, DNS tampering, call forwarding, 2G downgrades, hidden pro
 and tracking apps, traces of uninstalled spyware and firmware integrity issues. Results are shown in a
 local web dashboard (Brazilian Portuguese UI) and saved with hashed evidence. Scans are read-only, and
 app removal only happens after explicit manual confirmation. Install with
-`pipx install "desgrampa[forense] @ git+https://github.com/SEU-USUARIO/desgrampa"` and run `desgrampa`.
+`pipx install "desgrampa[forense] @ git+https://github.com/bernardofernandezz/desgrampa"` and run `desgrampa`.
 Licensed under GPL-3.0-or-later.
 </details>
 # desgrampa
