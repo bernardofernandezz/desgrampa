@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+*.egg-info/
+build/
+dist/
+.venv/
+.ruff_cache/
+
+# dados locais: bases baixadas e relatórios com evidências do SEU aparelho — nunca versionar
+data/
+relatorios/
