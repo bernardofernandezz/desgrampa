@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Desgrampa</title>
+  <script>
+    // aplica o tema antes de pintar a página (padrão: escuro)
+    try { document.documentElement.dataset.theme = localStorage.getItem("desgrampa-theme") || "dark"; }
+    catch { document.documentElement.dataset.theme = "dark"; }
+    if (document.documentElement.dataset.theme === "system") delete document.documentElement.dataset.theme;
+  </script>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand">
+      <svg viewBox="0 0 24 24" class="ico brand-ico"><path d="M12 3 5 6v5c0 4.5 3 8.3 7 9.5 4-1.2 7-5 7-9.5V6l-7-3Z"/><path d="m9 12 2 2 4-4"/></svg>
+      <span>Desgrampa</span>
+    </div>
+    <nav class="nav">
+      <a href="#varredura" data-page="varredura">
+        <svg viewBox="0 0 24 24" class="ico"><path d="M13 2 4 14h7l-1 8 9-12h-7l1-8Z"/></svg>Varredura</a>
+      <a href="#dispositivos" data-page="dispositivos">
+        <svg viewBox="0 0 24 24" class="ico"><rect x="6" y="2" width="12" height="20" rx="2.5"/><path d="M11 18h2"/></svg>Dispositivos</a>
+      <a href="#relatorios" data-page="relatorios">
+        <svg viewBox="0 0 24 24" class="ico"><path d="M14 2H7a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7l-5-5Z"/><path d="M14 2v5h5M9 13h6M9 17h6"/></svg>Relatórios</a>
+      <a href="#configuracoes" data-page="configuracoes">
+        <svg viewBox="0 0 24 24" class="ico"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg>Configurações</a>
+    </nav>
+    <div class="sys-status" id="sys-status">
+      <div class="sys-line"><span class="dot"></span><span id="sys-text">Conectando…</span></div>
+      <div class="muted small">Última verificação</div>
+      <div class="small" id="last-scan">—</div>
+    </div>
+  </aside>
+
+  <div class="main">
+    <header class="topbar">
+      <label class="device-select" id="device-select">
+        <svg viewBox="0 0 24 24" class="ico"><rect x="6" y="2" width="12" height="20" rx="2.5"/><path d="M11 18h2"/></svg>
+        <select id="device-picker" aria-label="Aparelho"></select>
+        <svg viewBox="0 0 24 24" class="ico chev"><path d="m6 9 6 6 6-6"/></svg>
+      </label>
+    </header>
+
+    <!-- ===================== VARREDURA ===================== -->
+    <section class="page" id="page-varredura">
+      <div class="eyebrow">Varredura</div>
+      <h1>Análise de <strong>segurança do dispositivo</strong></h1>
+      <p class="lead">Verifique se há sinais de spyware, conexões suspeitas e se o aparelho está sendo monitorado.
+        Nada é alterado no celular e nenhum dado sai deste computador.</p>
+
+      <div class="grid-2">
+        <div class="card device-card" id="device-card"></div>
+
+        <div class="card scan-card">
+          <div class="card-title">
+            <svg viewBox="0 0 24 24" class="ico lg"><path d="M13 2 4 14h7l-1 8 9-12h-7l1-8Z"/></svg>
+            <div><h2>Iniciar varredura</h2><p class="muted">Escolha o tipo de análise que deseja executar.</p></div>
+          </div>
+          <div class="modes">
+            <label class="mode">
+              <input type="radio" name="mode" value="rapida">
+              <span class="radio"></span>
+              <span><strong>Rápida</strong><span class="mode-time">1 a 2 minutos</span>
+                <span class="muted">Verifica todas as áreas com os dados disponíveis na hora: apps, bases de spyware,
+                  certificados, proxy/DNS, telefonia, contas e rastros.</span></span>
+            </label>
+            <label class="mode">
+              <input type="radio" name="mode" value="completa" checked>
+              <span class="radio"></span>
+              <span><strong>Completa (forense)</strong><span class="mode-time">10 a 25 minutos</span>
+                <span class="muted">Tudo da varredura rápida + certificado e hash de cada app, firmware, uso de
+                  microfone/câmera, volume de dados em segundo plano e bugreport analisado pelo MVT da Anistia Internacional.</span></span>
+            </label>
+          </div>
+          <label class="check">
+            <input type="checkbox" id="pc-network" checked>
+            <span>Testar também a rede local (DNS adulterado, HTTPS interceptado, ARP spoofing).</span>
+          </label>
+          <div class="scan-foot">
+            <p class="muted small info-line">
+              <svg viewBox="0 0 24 24" class="ico sm"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>
+              <span id="mvt-status">Verificando MVT…</span></p>
+            <button id="start" class="primary" disabled>Iniciar varredura
+              <svg viewBox="0 0 24 24" class="ico sm"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card progress-card hidden" id="progress">
+        <div class="progress-head">
+          <span class="spinner" aria-hidden="true"></span>
+          <div class="grow"><strong>Varredura em andamento</strong><div class="muted" id="step">Iniciando</div></div>
+          <span class="pill" id="pct">0%</span>
+        </div>
+        <div class="bar"><div id="bar-fill"></div></div>
+        <p class="muted small">Mantenha o aparelho conectado, desbloqueado e com a tela ligada.</p>
+      </div>
+
+      <div id="result" class="hidden"></div>
+
+      <div class="card help-card">
+        <svg viewBox="0 0 24 24" class="ico lg circle"><path d="M12 3 5 6v5c0 4.5 3 8.3 7 9.5 4-1.2 7-5 7-9.5V6l-7-3Z"/><path d="M12 8v4M12 15h.01"/></svg>
+        <div>
+          <strong>Se você acha que está sendo vigiado</strong>
+          <ul>
+            <li><strong>Pense na sua segurança antes de remover algo.</strong> Quem instalou pode perceber a remoção.</li>
+            <li><strong>Suspeita de organização/governo:</strong> não apague nada nem restaure o aparelho antes de uma análise.
+              Envie a pasta de evidências para a <a href="https://www.accessnow.org/help/" target="_blank" rel="noopener">Access Now
+              Digital Security Helpline</a> (gratuita, atende em português) ou o
+              <a href="https://securitylab.amnesty.org/get-help/" target="_blank" rel="noopener">Amnesty Security Lab</a>.</li>
+            <li>No Brasil: <strong>Ligue 180</strong>, <strong>190</strong> em emergência,
+              <a href="https://stopstalkerware.org/pt-br/" target="_blank" rel="noopener">stopstalkerware.org</a>.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== DISPOSITIVOS ===================== -->
+    <section class="page hidden" id="page-dispositivos">
+      <div class="eyebrow">Dispositivos</div>
+      <h1>Aparelhos <strong>conectados</strong></h1>
+      <p class="lead">Aparelhos Android detectados pelo cabo USB e como deixá-los prontos para a varredura.</p>
+      <div id="devices-list"></div>
+      <div class="card">
+        <h2>Como conectar um aparelho</h2>
+        <ol class="steps">
+          <li>No celular, abra <strong>Configurações › Sobre o telefone</strong> e toque 7 vezes em “Número da versão” (ou “Versão MIUI”).</li>
+          <li>Em <strong>Opções do desenvolvedor</strong>, ative <strong>Depuração USB</strong>. Em Xiaomi, ative também “Depuração USB (configurações de segurança)”.</li>
+          <li>Conecte um cabo de dados e escolha “Transferência de arquivos” se perguntado.</li>
+          <li>Desbloqueie o celular e toque em <strong>Permitir</strong> no aviso “Permitir depuração USB?”.</li>
+          <li>Depois da varredura, desligue a depuração USB e revogue as autorizações.</li>
+        </ol>
+      </div>
+    </section>
+
+    <!-- ===================== RELATÓRIOS ===================== -->
+    <section class="page hidden" id="page-relatorios">
+      <div class="eyebrow">Relatórios</div>
+      <h1>Varreduras <strong>salvas</strong></h1>
+      <p class="lead">Cada varredura fica salva com as evidências (comandos brutos, bugreport, resultado do MVT e
+        SHA256SUMS) na pasta de dados do Desgrampa, mostrada no terminal ao iniciar.</p>
+      <div id="reports-list"></div>
+      <div id="report-view" class="hidden"></div>
+    </section>
+
+    <!-- ===================== CONFIGURAÇÕES ===================== -->
+    <section class="page hidden" id="page-configuracoes">
+      <div class="eyebrow">Configurações</div>
+      <h1>Preferências e <strong>bases de indicadores</strong></h1>
+      <p class="lead">Tema da interface, ferramentas detectadas e atualização das bases de spyware.</p>
+      <div id="settings"></div>
+    </section>
+  </div>
+</div>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
