@@ -1,0 +1,39 @@
+# Recorte mínimo de AssoEchap/stalkerware-indicators (CC-BY 4.0), usado só nos testes.
+# https://github.com/AssoEchap/stalkerware-indicators
+- name: TheTruthSpy
+  type: stalkerware
+  packages:
+  - com.systemservice
+  - com.thetruth
+  certificates:
+  - 31A6ECECD97CF39BC4126B8745CD94A7C30BF81C
+  websites:
+  - thetruthspy.com
+  - https://github.com/exemplo/repositorio-de-malware
+  c2:
+    ips:
+    - 69.64.74.239
+- name: FlexiSpy
+  type: stalkerware
+  packages:
+  - com.vvt.android.syncmanager
+  c2:
+    domains:
+    - api.flexispy.com
+- name: mSpy
+  type: stalkerware
+  packages:
+  - android.sys.process
+  c2:
+    domains:
+    - mspyonline.com
+- name: Life360
+  type: stalkerware
+  packages:
+  - com.life360.android.safetymapd
+- name: MobileTrackerFree
+  type: stalkerware
+  packages:
+  - com.mobiletracker
+  certificates:
+  - 927CA44949D7788AA86F9D7F04D7FDACECD1DFB9

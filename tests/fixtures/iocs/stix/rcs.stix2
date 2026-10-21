@@ -1,0 +1,30 @@
+{
+ "type": "bundle",
+ "objects": [
+  {
+   "type": "malware",
+   "id": "malware--1",
+   "name": "RCSLab"
+  },
+  {
+   "type": "indicator",
+   "id": "indicator--1",
+   "pattern": "[app:id = 'com.vodaservices']"
+  },
+  {
+   "type": "relationship",
+   "source_ref": "indicator--1",
+   "target_ref": "malware--1"
+  },
+  {
+   "type": "indicator",
+   "id": "indicator--2",
+   "pattern": "[ipv4-addr:value = '103.43.17.99']"
+  },
+  {
+   "type": "relationship",
+   "source_ref": "indicator--2",
+   "target_ref": "malware--1"
+  }
+ ]
+}

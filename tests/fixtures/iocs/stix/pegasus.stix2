@@ -1,0 +1,30 @@
+{
+ "type": "bundle",
+ "objects": [
+  {
+   "type": "malware",
+   "id": "malware--1",
+   "name": "Pegasus"
+  },
+  {
+   "type": "indicator",
+   "id": "indicator--1",
+   "pattern": "[process:name = 'gatekeeperd']"
+  },
+  {
+   "type": "relationship",
+   "source_ref": "indicator--1",
+   "target_ref": "malware--1"
+  },
+  {
+   "type": "indicator",
+   "id": "indicator--2",
+   "pattern": "[domain-name:value = 'weather4free.com']"
+  },
+  {
+   "type": "relationship",
+   "source_ref": "indicator--2",
+   "target_ref": "malware--1"
+  }
+ ]
+}

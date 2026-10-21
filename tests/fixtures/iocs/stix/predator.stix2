@@ -1,0 +1,30 @@
+{
+ "type": "bundle",
+ "objects": [
+  {
+   "type": "malware",
+   "id": "malware--1",
+   "name": "Predator"
+  },
+  {
+   "type": "indicator",
+   "id": "indicator--1",
+   "pattern": "[file:path = '/data/local/tmp/wd/']"
+  },
+  {
+   "type": "relationship",
+   "source_ref": "indicator--1",
+   "target_ref": "malware--1"
+  },
+  {
+   "type": "indicator",
+   "id": "indicator--2",
+   "pattern": "[android-property:name = 'sys.predator.test']"
+  },
+  {
+   "type": "relationship",
+   "source_ref": "indicator--2",
+   "target_ref": "malware--1"
+  }
+ ]
+}

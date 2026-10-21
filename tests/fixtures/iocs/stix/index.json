@@ -1,0 +1,22 @@
+[
+ {
+  "name": "NSO Group Pegasus",
+  "file": "pegasus.stix2",
+  "references": []
+ },
+ {
+  "name": "Predator Spyware",
+  "file": "predator.stix2",
+  "references": []
+ },
+ {
+  "name": "RCS Lab Spyware",
+  "file": "rcs.stix2",
+  "references": []
+ },
+ {
+  "name": "Stalkerware",
+  "file": "stalkerware.stix2",
+  "references": []
+ }
+]

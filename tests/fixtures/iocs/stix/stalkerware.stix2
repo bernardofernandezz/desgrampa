@@ -1,0 +1,20 @@
+{
+ "type": "bundle",
+ "objects": [
+  {
+   "type": "malware",
+   "id": "malware--1",
+   "name": "TheTruthSpy"
+  },
+  {
+   "type": "indicator",
+   "id": "indicator--1",
+   "pattern": "[file:hashes.sha256 = 'abababababababababababababababababababababababababababababababab']"
+  },
+  {
+   "type": "relationship",
+   "source_ref": "indicator--1",
+   "target_ref": "malware--1"
+  }
+ ]
+}
