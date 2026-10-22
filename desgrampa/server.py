@@ -358,7 +358,8 @@ class Handler(BaseHTTPRequestHandler):
         if filename == "vulnerabilidades.csv":
             return self._send(200, export.vulns_csv(result), "text/csv; charset=utf-8",
                               attachment(f"{name}_vulnerabilidades.csv"))
-        return self._send(200, result)
+        # hashes que identificam a pasta de evidências, mostrados no cabeçalho do relatório (rastreabilidade)
+        return self._send(200, {**result, "integrity": evidence.integrity(name)})
 
     def get_help(self):
         self._send(200, ajuda.load())

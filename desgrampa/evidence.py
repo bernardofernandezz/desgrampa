@@ -93,6 +93,7 @@ def list_reports(reports_dir=None):
             "mode": r.get("mode"),
             "device": " ".join(x for x in (device.get("manufacturer"), device.get("model")) if x) or device.get("serial"),
             "serial": device.get("serial"),
+            "platform": device.get("platform", "android"),
             "verdict": r.get("verdict"),
             "counts": r.get("counts"),
             "duration_s": r.get("duration_s"),

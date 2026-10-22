@@ -97,6 +97,11 @@ class ExportTests(ApiCase):
         self.assertIn("154-A", html)
         self.assertIn(evidence.integrity(name)["report_sha256"], html)
 
+        # o JSON usado pelo painel traz os hashes que identificam a pasta de evidências
+        code, _, body = self.get(f"/api/reports/{name}/relatorio.json")
+        self.assertEqual(json.loads(body)["integrity"]["report_sha256"], evidence.integrity(name)["report_sha256"])
+        self.assertEqual(json.loads(self.get("/api/reports")[2])[0]["platform"], "android")
+
         code, _, body = self.get(f"/api/reports/{name}/relatorio.stix.json")
         bundle = json.loads(body)
         kinds = {o["type"] for o in bundle["objects"]}
