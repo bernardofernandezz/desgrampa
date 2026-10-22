@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Desgrampa — descubra se seu celular está sendo espionado</title>
+  <meta name="description" content="Ferramenta gratuita e de código aberto que verifica se um celular Android ou iPhone tem app espião, foi invadido ou está vulnerável. Roda no seu computador, sem enviar dados para fora.">
+  <style>
+    :root { --bg: #f6f7f9; --surface: #fff; --text: #141a23; --muted: #5c6675; --border: #e1e5eb; --accent: #2f6fed;
+      --crit: #c62828; --crit-bg: #fdecec; }
+    @media (prefers-color-scheme: dark) {
+      :root { --bg: #0a0d12; --surface: #0f141b; --text: #e8ecf2; --muted: #8b95a5; --border: #1e2631; --accent: #5b93ff;
+        --crit: #ff6b6b; --crit-bg: #2a1416; }
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif; }
+    a { color: var(--accent); }
+    .wrap { max-width: 1040px; margin: 0 auto; padding: 0 16px; }
+    header { padding: 56px 0 32px; }
+    h1 { font-size: clamp(30px, 5vw, 46px); line-height: 1.15; margin: 0 0 14px; letter-spacing: -.02em; }
+    h2 { font-size: 24px; margin: 48px 0 12px; }
+    .lead { font-size: 19px; color: var(--muted); max-width: 720px; }
+    .cta { display: flex; flex-wrap: wrap; gap: 12px; margin: 26px 0 8px; }
+    .btn { display: inline-flex; gap: 8px; align-items: center; padding: 12px 20px; border-radius: 10px; font-weight: 600;
+      text-decoration: none; border: 1px solid var(--border); background: var(--surface); color: var(--text); }
+    .btn.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .small { font-size: 14px; color: var(--muted); }
+    .alert { border: 1px solid color-mix(in srgb, var(--crit) 40%, transparent); background: var(--crit-bg); border-radius: 12px;
+      padding: 16px 20px; margin: 18px 0; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 18px 20px; }
+    .card h3 { margin: 0 0 6px; font-size: 17px; }
+    .card p { margin: 0; color: var(--muted); font-size: 15px; }
+    ol.steps { padding-left: 22px; } ol.steps li { margin: 6px 0; }
+    img.shot { width: 100%; border-radius: 12px; border: 1px solid var(--border); margin-top: 20px; }
+    code { font-size: 14px; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 2px 6px; word-break: break-all; }
+    footer { padding: 40px 0 60px; color: var(--muted); font-size: 14px; }
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Seu celular está sendo espionado?</h1>
+    <p class="lead">O <strong>Desgrampa</strong> procura apps espiões, invasão e falhas de segurança em celulares
+      Android e iPhone. É gratuito, de código aberto e roda no seu computador: <strong>nenhum dado do celular sai dele</strong>.</p>
+    <div class="cta">
+      <a class="btn primary" href="https://github.com/bernardofernandezz/desgrampa/releases/latest/download/desgrampa-windows.exe">Baixar para Windows</a>
+      <a class="btn" href="https://github.com/bernardofernandezz/desgrampa/releases/latest/download/desgrampa-macos">macOS</a>
+      <a class="btn" href="https://github.com/bernardofernandezz/desgrampa/releases/latest/download/desgrampa-linux">Linux</a>
+      <a class="btn" href="https://github.com/bernardofernandezz/desgrampa">Código-fonte</a>
+    </div>
+    <p class="small">Confira o arquivo baixado: <a href="https://github.com/bernardofernandezz/desgrampa/releases/latest">SHA256SUMS e
+      atestação de origem</a> em cada versão.</p>
+    <div class="alert">
+      <strong>Se alguém próximo pode estar vigiando você:</strong> remover um app espião pode alertar quem o instalou.
+      Planeje com apoio antes. <strong>Ligue 180</strong> (violência contra a mulher, 24 h, WhatsApp (61) 9610-0180) ·
+      <strong>190</strong> em emergência.
+    </div>
+  </header>
+
+  <h2>O que ele verifica</h2>
+  <div class="grid">
+    <div class="card"><h3>Apps espiões</h3><p>mSpy, FlexiSPY, TheTruthSpy, MeuSpy, eagleSPY e centenas de outros, por nome, certificado e assinatura.</p></div>
+    <div class="card"><h3>Spyware de governos</h3><p>Indicadores de Pegasus, Predator e outros, com o MVT da Anistia Internacional.</p></div>
+    <div class="card"><h3>Conexões interceptadas</h3><p>Certificados instalados, proxy, VPN, DNS adulterado e Wi-Fi com ataque.</p></div>
+    <div class="card"><h3>Ligações e chip</h3><p>Desvio de chamadas, rede 2G falsa e apps que controlam SMS.</p></div>
+    <div class="card"><h3>Falhas de segurança</h3><p>Brechas conhecidas ainda abertas no aparelho, com destaque para as que já estão sendo exploradas.</p></div>
+    <div class="card"><h3>Rastros</h3><p>Apps espiões que já foram apagados, mas deixaram marcas no sistema.</p></div>
+  </div>
+  <img class="shot" src="img/resultado.png" alt="Resultado de uma verificação com semáforo e o que fazer agora">
+
+  <h2>Como usar</h2>
+  <ol class="steps">
+    <li>Baixe e abra o Desgrampa no computador. O painel abre no navegador.</li>
+    <li>No celular Android, ative a <strong>Depuração USB</strong>. O painel mostra o passo a passo da sua marca
+      (Samsung, Motorola, Xiaomi…). Também dá para conectar pelo Wi-Fi.</li>
+    <li>Conecte o cabo, toque em <strong>Permitir</strong> e clique em <strong>Iniciar varredura</strong>.</li>
+    <li>Veja o resultado em linguagem simples, com o que fazer agora. Baixe o relatório para levar à delegacia,
+      à Defensoria ou a um serviço de apoio.</li>
+    <li>No fim, desligue a Depuração USB.</li>
+  </ol>
+  <p class="small">iPhone: o Desgrampa analisa um backup local do aparelho com o MVT e confere a versão do iOS.</p>
+
+  <h2>Para Defensorias, delegacias e serviços de apoio</h2>
+  <p>O <strong>modo atendimento</strong> (<code>desgrampa --atendimento</code>) registra o termo de consentimento, numera cada
+    atendimento, gera o pacote de evidências com hashes e cadeia de custódia e apaga os dados do computador ao final.
+    Veja o <a href="https://github.com/bernardofernandezz/desgrampa/blob/main/docs/atendimento.md">guia do atendimento</a>.</p>
+
+  <h2>Limites</h2>
+  <p>Nenhuma ferramenta consegue provar que um celular está limpo. O Desgrampa reconhece o que já foi documentado e
+    explica cada achado, mas spyware muito sofisticado pode não deixar rastros. Contas na nuvem e a operadora
+    também precisam ser conferidas (o painel traz a lista).
+    <a href="https://github.com/bernardofernandezz/desgrampa/blob/main/docs/modelo-de-ameaca.md">Modelo de ameaça</a>.</p>
+
+  <footer>
+    Desgrampa · software livre (GPL-3.0) · indicadores da AssoEchap e da Anistia Internacional ·
+    <a href="https://github.com/bernardofernandezz/desgrampa/blob/main/SECURITY.md">reportar falha de segurança</a>
+  </footer>
+</div>
+</body>
+</html>

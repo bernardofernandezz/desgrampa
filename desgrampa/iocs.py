@@ -4,6 +4,8 @@ Fontes:
 - AssoEchap/stalkerware-indicators (ioc.yaml) — stalkerware comercial.
 - mvt-project/mvt-indicators (STIX2) — spyware mercenário/estatal (Pegasus, Predator, Candiru,
   NoviSpy, Cellebrite...) usado pelo Mobile Verification Toolkit da Anistia Internacional.
+- desgrampa/dados/br-indicators.yaml (vem com o código) — famílias vendidas no Brasil e indicadores
+  brasileiros ainda não publicados na AssoEchap.
 
 As bases não são distribuídas com o código (licenças das fontes e tamanho): são baixadas na
 primeira execução para paths.DATA_DIR e podem ser atualizadas pela interface ou pela linha de comando.
@@ -20,7 +22,7 @@ from pathlib import Path
 
 import yaml
 
-from .paths import DATA_DIR
+from .paths import BUNDLED_DATA_DIR, DATA_DIR
 
 ECHAP_FILE = "ioc.yaml"
 STIX_DIR = "stix"
@@ -28,6 +30,8 @@ ECHAP_URL = "https://raw.githubusercontent.com/AssoEchap/stalkerware-indicators/
 MVT_INDEX_URL = "https://raw.githubusercontent.com/mvt-project/mvt-indicators/main/indicators.yaml"
 
 STALKERWARE = "Stalkerware (AssoEchap)"
+STALKERWARE_BR = "Stalkerware (Brasil)"
+BR_FILE = "br-indicators.yaml"
 
 # tipo STIX2 -> atributo do Iocs
 STIX_KINDS = {
@@ -72,6 +76,7 @@ class Iocs:
         for kind in KINDS:
             setattr(self, kind, {})
         self.collections = {}   # nome -> quantidade de indicadores
+        self.sold_in_brazil = {}   # família -> sites brasileiros de venda
         self.source = ""
         self.updated = ""
 
@@ -92,9 +97,13 @@ class Iocs:
             table[value] = match
             self.collections[match.collection] = self.collections.get(match.collection, 0) + 1
 
-    def add_echap(self, entries):
+    def add_echap(self, entries, collection=STALKERWARE):
         for e in entries:
-            m = Match(e.get("name", "desconhecido"), STALKERWARE)
+            m = Match(e.get("name", "desconhecido"), collection)
+            br_sites = [w for w in e.get("websites") or [] if w.split("/")[0].endswith(".br")]
+            if e.get("vendido_no_brasil") or br_sites:
+                sites = self.sold_in_brazil.setdefault(m.family, [])
+                sites += [w for w in (e.get("websites") or []) if w not in sites]
             c2 = e.get("c2") or {}
             for p in e.get("packages") or []:
                 self._add("packages", p, m)
@@ -222,6 +231,9 @@ def load(data_dir=None):
     for name, bundle in _read_stix_dir(data_dir / STIX_DIR):
         # a versão STIX da base de stalkerware traz também hashes de APK
         iocs.add_stix(bundle, STALKERWARE if "stalkerware" in name.lower() else name)
+    br_file = BUNDLED_DATA_DIR / BR_FILE
+    if br_file.exists():   # depois das outras: indicadores repetidos continuam atribuídos à AssoEchap
+        iocs.add_echap(_read_echap(br_file), STALKERWARE_BR)
     iocs.source = "baixada da internet"
     iocs.updated = datetime.fromtimestamp((data_dir / ECHAP_FILE).stat().st_mtime, timezone.utc).strftime("%Y-%m-%d")
     return iocs

@@ -27,6 +27,14 @@ def visible_monitoring_app(ctx, pkg, match):
                 s for s in spy_signals(ctx, pkg) if not s.startswith("permissões")))
 
 
+def sold_in_brazil_note(ctx, match):
+    sites = getattr(ctx.iocs, "sold_in_brazil", {}).get(match.family)
+    if not sites:
+        return ""
+    return (f" É vendido no Brasil ({', '.join(sites[:3])}): vender ou distribuir programa feito para invadir "
+            "aparelhos também é crime (Código Penal, art. 154-A, § 1º).")
+
+
 def ioc_finding(ctx, pkg, match, where=""):
     if visible_monitoring_app(ctx, pkg, match):
         return Finding(
@@ -43,7 +51,8 @@ def ioc_finding(ctx, pkg, match, where=""):
         f"O pacote {app_label(ctx, pkg)}{where} consta na base de indicadores ({match}). "
         + ("Esse tipo de spyware é usado em ataques direcionados e tem acesso amplo ao aparelho."
            if match.mercenary else
-           "Esse tipo de app costuma ler mensagens, localização, chamadas e enviar para outra pessoa."),
+           "Esse tipo de app costuma ler mensagens, localização, chamadas e enviar para outra pessoa.")
+        + sold_in_brazil_note(ctx, match),
         SAFETY_TIP + (" Para spyware mercenário, NÃO apague nada: procure a Access Now Helpline ou o "
                       "Amnesty Security Lab para análise forense." if match.mercenary else
                       " Para remover: Configurações > Apps (retire antes a permissão de administrador, se houver)."),

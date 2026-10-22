@@ -17,6 +17,8 @@ Rotas:
     POST /api/atendimento/abrir             {consent, name, operator}
     GET  /api/atendimento/<id>/pacote.zip   evidências + relatórios + termo do atendimento
     POST /api/atendimento/encerrar          {case}  apaga os dados do atendimento deste computador
+    GET  /api/ios                           ferramentas e iPhones conectados
+    POST /api/ios/scan                      {udid} (backup pelo cabo) ou {backup_path}, mais {password}
     POST /api/scan                          {serial, mode, pc_network}
     POST /api/actions                       {report, package, action, confirm, keep_apk, mercenary_ack}
     POST /api/iocs/update                   baixa as bases de indicadores em segundo plano
@@ -50,6 +52,7 @@ from . import (
     evidence,
     export,
     iocs,
+    ios,
     oscompat,
     report,
     scanner,
@@ -173,6 +176,32 @@ class State:
         threading.Thread(target=worker, daemon=True).start()
         return job["id"]
 
+    def start_ios_scan(self, udid=None, backup_path=None, password=None, case=None):
+        key = udid or "backup"
+        job = {"id": uuid.uuid4().hex[:12], "state": "running", "progress": 0.0, "step": "Iniciando",
+               "result": None, "error": None, "serial": key, "mode": "iphone"}
+        with self.lock:
+            if self.is_scanning(key):
+                raise ApiError(409, "Já existe uma análise em andamento neste iPhone.")
+            self.scans[job["id"]] = job
+
+        def progress(fraction, step):
+            job["progress"], job["step"] = round(fraction, 3), step
+
+        def worker():
+            try:
+                job["result"] = ios.run_scan(self.iocs, self.bulletins, udid=udid, backup_dir=backup_path,
+                                             password=password, on_progress=progress, case=case)
+                job.update(state="done", progress=1.0, step="Concluído")
+            except ios.IosError as e:
+                job.update(state="error", error=str(e))
+            except Exception as e:
+                log.exception("análise do iPhone falhou")
+                job.update(state="error", error=str(e))
+
+        threading.Thread(target=worker, daemon=True).start()
+        return job["id"]
+
     # ---- bases e ferramentas
 
     def refresh_iocs(self):
@@ -209,12 +238,14 @@ class Handler(BaseHTTPRequestHandler):
         (re.compile(r"/api/ajuda"), "get_help"),
         (re.compile(r"/api/atendimento"), "get_attendance"),
         (re.compile(r"/api/atendimento/(ATD-\d{8}-\d{3})/pacote\.zip"), "get_case_package"),
+        (re.compile(r"/api/ios"), "get_ios"),
     ]
     POST_ROUTES = {"/api/scan": "post_scan", "/api/actions": "post_action", "/api/iocs/update": "post_iocs_update",
                    "/api/wireless/pair": "post_wireless_pair", "/api/wireless/connect": "post_wireless_connect",
                    "/api/wireless/disconnect": "post_wireless_disconnect",
                    "/api/privacy/ephemeral": "post_ephemeral", "/api/privacy/wipe": "post_wipe",
-                   "/api/atendimento/abrir": "post_case_open", "/api/atendimento/encerrar": "post_case_close"}
+                   "/api/atendimento/abrir": "post_case_open", "/api/atendimento/encerrar": "post_case_close",
+                   "/api/ios/scan": "post_ios_scan"}
 
     @property
     def state(self):
@@ -349,10 +380,9 @@ class Handler(BaseHTTPRequestHandler):
             raise ApiError(400, "modo inválido")
         self.state.ready_device(serial)
         options = {"pc_network": bool(body.get("pc_network"))}
-        if self.state.attendance:
-            if not self.state.attendance.current:
-                raise ApiError(409, "abra um atendimento (com o termo de consentimento) antes da varredura")
-            options["case"] = self.state.attendance.current
+        case = self._case_for_scan()
+        if case:
+            options["case"] = case
         scan_id = self.state.start_scan(serial, mode, options)
         self._send(200, {"id": scan_id})
 
@@ -385,6 +415,32 @@ class Handler(BaseHTTPRequestHandler):
     def post_iocs_update(self, _body):
         self.state.refresh_iocs()
         self._send(202, {"job": self.state.iocs_job})
+
+    def get_ios(self):
+        try:
+            devices = ios.list_devices()
+            error = None
+        except ios.IosError as e:
+            devices, error = [], str(e)
+        self._send(200, {**ios.status(), "devices": devices, "error": error})
+
+    def post_ios_scan(self, body):
+        udid, path = body.get("udid"), (body.get("backup_path") or "").strip()
+        if not udid and not path:
+            raise ApiError(400, "escolha um iPhone conectado ou informe a pasta de um backup")
+        if path and not Path(path).expanduser().is_dir():
+            raise ApiError(400, "pasta de backup não encontrada")
+        case = self._case_for_scan()
+        scan_id = self.state.start_ios_scan(udid=None if path else udid, backup_path=path or None,
+                                            password=body.get("password") or None, case=case)
+        self._send(200, {"id": scan_id})
+
+    def _case_for_scan(self):
+        if not self.state.attendance:
+            return None
+        if not self.state.attendance.current:
+            raise ApiError(409, "abra um atendimento (com o termo de consentimento) antes da varredura")
+        return self.state.attendance.current
 
     def post_ephemeral(self, body):
         self.state.set_ephemeral(bool(body.get("on")))

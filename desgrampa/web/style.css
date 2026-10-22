@@ -415,3 +415,10 @@ select.plain { padding: 5px 10px; }
 blockquote { margin: 8px 0; padding: 8px 14px; border-left: 3px solid var(--border); color: var(--muted); font-size: 13.5px; }
 .case.current { border-color: var(--accent); }
 .consent ol { padding-left: 20px; }
+
+/* ---- acessibilidade ---- */
+.skip { position: absolute; left: -999px; top: 8px; z-index: 50; background: var(--accent); color: var(--accent-text);
+  padding: 8px 14px; border-radius: 8px; }
+.skip:focus { left: 8px; }
+:is(a, button, summary, select, input):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; transition: none !important; } }

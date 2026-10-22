@@ -1,0 +1,99 @@
+# Indicadores de stalkerware com foco no Brasil (formato compatível com AssoEchap/stalkerware-indicators).
+#
+# Para que serve:
+# - marca as famílias vendidas no Brasil: o relatório lembra que vender ou distribuir programa feito
+#   para invadir aparelhos também é crime (Código Penal, art. 154-A, § 1º);
+# - recebe indicadores novos achados no Brasil antes de entrarem na base da AssoEchap. Todo indicador
+#   novo precisa de fonte verificável (amostra, análise publicada, site do vendedor) e deve ser enviado
+#   também para https://github.com/AssoEchap/stalkerware-indicators.
+#
+# Campos: name, packages, certificates (SHA-1), websites, c2 {domains, ips}, vendido_no_brasil, fonte.
+# As entradas abaixo vêm da AssoEchap (CC BY 4.0) — veja docs/indicadores-br.md para contribuir.
+
+- name: OwnSpy
+  packages:
+  - com.ownspy.android
+  - org.system.kernel
+  websites:
+  - admin.webdetetive.com.br
+  - panel.webdetetive.com.br
+  - webdetetive.com.br
+  vendido_no_brasil: true
+  fonte: AssoEchap/stalkerware-indicators
+- name: Cerberus
+  packages:
+  - com.lsdroid.cerberuss
+  - com.lsdroid.cerberus.persona
+  - com.lsdroid.cerberus.persona2
+  - com.lsdroid.cerberus.kids
+  - com.lsdroid.cerberus.client
+  - com.lsdroid.cerberus
+  - com.surebrec
+  - com.ssurebrec
+  - com.lsdroid.cerberus.enterprise
+  - com.lsdroid.lsp
+  websites:
+  - cerberusbrasil.com
+  vendido_no_brasil: true
+  fonte: AssoEchap/stalkerware-indicators
+- name: MeuSpy
+  packages:
+  - com.app.com.app.com.app.aplintal
+  - com.app.insapp2
+  - com.meuspy
+  - br.com.cloud.aplicativo
+  - br.com.cloud.backup
+  - br.com.daggers.gameap
+  - br.com.daggers.toshtec
+  - br.com.phonecell.cloud1
+  - br.com.phonecell.go5ge
+  - br.com.phonecell.maps
+  - br.com.phonecell.radio
+  - br.com.phonecell.services
+  - br.com.sistema.aplicativo
+  - br.com.monsthers.gameap
+  - in.servidor.service
+  - br.com.galaxys.gameap
+  - br.com.gamelevel.playstart
+  - br.com.gamelevel.cloudv3
+  - com.tutorial.instalao
+  - com.aisistem.instalao
+  - br.com.appfornecedor.legal
+  websites:
+  - espiaodecelulargratis.com.br
+  - monitorecell.com.br
+  - www.espiaodecelulargratis.com.br
+  vendido_no_brasil: true
+  fonte: AssoEchap/stalkerware-indicators
+- name: EspiaoAndroid
+  packages:
+  - com.kfhdha.fkjfgjdi
+  websites:
+  - foxspy.com.br
+  vendido_no_brasil: true
+  fonte: AssoEchap/stalkerware-indicators
+- name: RastreadorDeNamorado
+  packages:
+  - br.com.rastreadordenamorado
+  websites:
+  - rastreadordenamorado.com.br
+  vendido_no_brasil: true
+  fonte: AssoEchap/stalkerware-indicators
+- name: BrunoEspiao
+  packages:
+  - com.moxlndmp.uhzhgzjh
+  - com.fzvsdrtb.qamlhxri
+  - com.thaxygpc.xjsjobpn
+  - com.nhevvtmt.thinkquo
+  websites:
+  - brunoespiao.com.br
+  vendido_no_brasil: true
+  fonte: AssoEchap/stalkerware-indicators
+- name: eagleSPY
+  packages:
+  - br.com.eaglespy
+  websites:
+  - eaglespy.com.br
+  - prontodigital.com.br
+  vendido_no_brasil: true
+  fonte: AssoEchap/stalkerware-indicators

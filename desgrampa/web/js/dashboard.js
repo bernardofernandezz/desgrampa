@@ -14,6 +14,9 @@ function deviceTitle(d) {
   return `${maker} ${d.model || ""}`.trim() || d.serial;
 }
 
+export const systemLabel = (d) => (d.platform === "ios" ? `iOS ${d.ios || "?"}`
+  : `Android ${d.android || "?"} · patch ${d.security_patch || "?"}`);
+
 // Veredito + números principais.
 function heroSection(r) {
   const d = r.device;
@@ -24,7 +27,7 @@ function heroSection(r) {
       el("h2", {}, r.verdict.label),
       el("p", {}, r.verdict.text),
       el("p", { class: "muted small" },
-        `Android ${d.android || "?"} · patch ${d.security_patch || "?"} · ${fmtDate(r.started)} · varredura ${r.mode}`),
+        `${systemLabel(d)} · ${fmtDate(r.started)} · varredura ${r.mode}`),
       r.verdict.code === "ok" ? el("p", { class: "muted small" },
         "Nada foi encontrado, mas isso não prova que o aparelho está limpo. Spyware mercenário pode não deixar "
         + "rastros acessíveis sem análise forense.") : null),
@@ -79,7 +82,7 @@ export function renderDashboard(container, r, links, reload, focus = {}) {
 
   const tabs = {
     achados: ["Achados", () => findingsTab(r, ui, redraw, links)],
-    vulns: [`Vulnerabilidades${r.data.vulns ? ` (${r.data.vulns.counts.total})` : ""}`, () => vulnsTab(r.data.vulns)],
+    vulns: [`Vulnerabilidades${r.data.vulns ? ` (${r.data.vulns.counts.total})` : ""}`, () => vulnsTab(r.data.vulns, r.data.ios)],
     tempo: ["Linha do tempo", () => timelineTab(r)],
     rede: ["Rede", () => networkTab(r.data)],
     telefonia: ["Telefonia", () => telephonyTab(r.data.telefonia)],

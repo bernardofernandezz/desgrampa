@@ -10,6 +10,7 @@ import { renderSettings } from "./settings.js";
 import { renderConnectGuide } from "./connect.js";
 import { installQuickExit, renderHelp } from "./ajuda.js";
 import { renderAttendance } from "./atendimento.js";
+import { renderIphone } from "./iphone.js";
 
 const STATUS_REFRESH_MS = 2500;
 
@@ -24,6 +25,7 @@ function render() {
   if (page === "dispositivos") {
     const waiting = (app.status?.devices || []).find((d) => d.state !== "device");
     renderConnectGuide($("#connect-guide"), waiting?.model);
+    renderIphone($("#iphone"));
   }
   if (page === "varredura" && arg.startsWith("scan/")) showScan(arg.slice(5));
 }

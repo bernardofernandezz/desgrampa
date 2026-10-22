@@ -1,0 +1,30 @@
+name: Novo indicador de spyware/stalkerware
+description: App, site ou servidor de espionagem visto no Brasil que o Desgrampa ainda não reconhece.
+labels: [indicador]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Não envie dados pessoais** (relatórios, prints com contas ou números, APKs de aparelhos de vítimas).
+        Para amostras, use o relato privado (aba Security) ou mande para a AssoEchap/Access Now.
+  - type: input
+    id: nome
+    attributes:
+      label: Nome comercial
+      placeholder: ex.: EspiãoX
+    validations:
+      required: true
+  - type: textarea
+    id: indicadores
+    attributes:
+      label: Indicadores
+      description: Nomes de pacote, SHA-1 do certificado, domínios e IPs de servidor, sites de venda.
+    validations:
+      required: true
+  - type: textarea
+    id: fonte
+    attributes:
+      label: Fonte verificável
+      description: Análise publicada, site do vendedor, hash de amostra pública… Indicadores sem fonte não entram.
+    validations:
+      required: true

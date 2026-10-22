@@ -28,4 +28,4 @@ Interessa especialmente:
 Este canal é para falhas **do Desgrampa**. Para ajuda com um aparelho comprometido:
 - [Access Now Digital Security Helpline](https://www.accessnow.org/help/) (gratuita, em português);
 - [Amnesty Security Lab](https://securitylab.amnesty.org/get-help/);
-- no Brasil: Ligue 180 / 190 e [stopstalkerware.org](https://stopstalkerware.org/pt-br/).
+- no Brasil: Ligue 180 / 190 e [stopstalkerware.org](https://stopstalkerware.org/resources/) (em inglês).

@@ -45,6 +45,12 @@ TOOLBAR = ("<div class=toolbar><button onclick='window.print()'>Imprimir ou salv
 
 # ---------------------------------------------------------------- helpers
 
+def system_label(d):
+    if d.get("platform") == "ios":
+        return f"iOS {d.get('ios') or '?'}"
+    return f"Android {d.get('android') or '?'} · patch {d.get('security_patch') or '?'}"
+
+
 def e(value):
     return escape("" if value is None else str(value))
 
@@ -75,8 +81,8 @@ def _header(r):
     d, v, s, iocs = r["device"], r["verdict"], r["stats"], r["iocs"]
     out = [
         "<h1>Relatório de varredura</h1>",
-        f"<div class=muted>{e(d.get('manufacturer'))} {e(d.get('model'))} · Android {e(d.get('android'))} · "
-        f"patch {e(d.get('security_patch'))} · serial {e(d.get('serial'))} · {e(r['started'])} · varredura "
+        f"<div class=muted>{e(d.get('manufacturer'))} {e(d.get('model'))} · {e(system_label(d))} · "
+        f"serial {e(d.get('serial'))} · {e(r['started'])} · varredura "
         f"{e(r['mode'])} ({r['duration_s']} s)</div>",
         f"<div class='verdict {e(v['code'])}'><strong>{e(v['label'])}</strong><br>{e(v['text'])}</div>",
         f"<p class=muted>{s['categories_verified']}/{s['categories_total']} áreas verificadas · "
@@ -294,6 +300,15 @@ def _kv(rows):
     return "<dl class=kv>" + "".join(f"<dt>{e(k)}</dt><dd>{v}</dd>" for k, v in rows) + "</dl>"
 
 
+def _ios_method(r):
+    opts = r.get("options", {})
+    return ("<p>Foi analisado um backup local do iPhone "
+            + ("feito pelo cabo nesta verificação" if opts.get("backup") == "pelo cabo" else "informado pela pessoa atendida")
+            + (", criptografado" if opts.get("encrypted") else ", sem criptografia")
+            + ", com o Mobile Verification Toolkit (MVT) da Anistia Internacional e "
+            f"{r['iocs']['total']} indicadores públicos de spyware. Nenhum dado do aparelho foi alterado.</p>")
+
+
 def render_authority(r, evidence, legal):
     """Relatório factual para delegacia, Defensoria ou serviço de apoio: identificação, método, achados
     relevantes, integridade (hashes), cadeia de custódia e base legal. `evidence` vem de evidence.integrity()."""
@@ -308,8 +323,7 @@ def render_authority(r, evidence, legal):
         "<h2>1. Identificação</h2>",
         _kv([("Aparelho", e(f"{d.get('manufacturer') or ''} {d.get('model') or ''}".strip())),
              ("Número de série (adb)", e(d.get("serial"))),
-             ("Sistema", e(f"Android {d.get('android') or '?'} · build {d.get('build') or '?'}")),
-             ("Patch de segurança", e(d.get("security_patch"))),
+             ("Sistema", e(f"{system_label(d)} · build {d.get('build') or '?'}")),
              ("Impressão digital do sistema", f"<code>{e(d.get('fingerprint'))}</code>"),
              ("Início da verificação", e(r["started"])),
              ("Duração", f"{r['duration_s']} s"),
@@ -317,6 +331,7 @@ def render_authority(r, evidence, legal):
              ("Responsável pela coleta", "______________________________________________"),
              ("Local", "______________________________________________")]),
         "<h2>2. Método</h2>",
+        _ios_method(r) if d.get("platform") == "ios" else
         f"<p>O aparelho foi conectado a um computador por depuração USB (ADB), autorizada na tela do próprio aparelho. "
         f"Foram executados {s['commands']} comandos exclusivamente de consulta (nenhum comando de alteração é usado na "
         f"varredura). Foram comparados {s['packages']} aplicativos e os dados coletados com "

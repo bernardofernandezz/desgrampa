@@ -42,7 +42,17 @@ desgrampa/
   report.py       relatório HTML exportável
   apksig.py       leitura do certificado de assinatura de APKs (v1/v2/v3), só com a stdlib
   paths.py        onde ficam dados e relatórios
+  oscompat.py     diferenças entre Linux, macOS e Windows; adb embutido no executável
+  bulletins.py    base de vulnerabilidades do Android/iOS (gerada por tools/build_bulletins.py)
+  ios.py          iPhone: backup local + MVT e versão do iOS
+  export.py       STIX 2.1 e CSV
+  ajuda.py        rede de apoio e base legal (dados/ajuda.json)
+  atendimento.py  modo atendimento: termo, número de atendimento, pacote e limpeza
+  dados/          bases versionadas: android_bulletins.json, br-indicators.yaml, ajuda.json
   web/            interface: HTML, CSS e módulos ES sem bundler (web/js/*.js)
+tools/            build_bulletins.py (base de vulnerabilidades; roda todo mês no CI)
+packaging/        executável único (PyInstaller) com o adb embutido
+site/             página de download (GitHub Pages)
 tests/
 ```
 

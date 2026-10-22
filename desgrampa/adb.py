@@ -3,6 +3,7 @@
 pair/connect/disconnect só mexem na conexão do computador com o aparelho (depuração sem fio),
 não em dados ou configurações do celular."""
 
+import contextlib
 import ipaddress
 import re
 import subprocess
@@ -100,6 +101,13 @@ def disconnect(serial):
     if not is_wireless_serial(serial):
         raise AdbError("só aparelhos conectados por Wi-Fi podem ser desconectados por aqui")
     _run(["disconnect", serial], timeout=15)
+
+
+def kill_server():
+    """Encerra o servidor do adb (usado ao sair do executável único: o adb embutido roda de uma pasta
+    temporária que o Windows não consegue apagar enquanto ele estiver aberto)."""
+    with contextlib.suppress(AdbError):
+        _run(["kill-server"], timeout=10)
 
 
 class Device:

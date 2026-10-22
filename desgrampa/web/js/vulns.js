@@ -11,7 +11,24 @@ const PAGE = 100;
 const cveLink = (cve) => (/^CVE-\d{4}-\d+$/.test(cve)
   ? el("a", { href: `https://nvd.nist.gov/vuln/detail/${cve}`, target: "_blank", rel: "noopener" }, cve) : cve);
 
-export function vulnsTab(v) {
+function iosVulns(ios) {
+  const st = ios.status;
+  return el("div", {},
+    el("div", { class: "facts" },
+      el("div", {}, el("span", {}, "Modelo"), ios.model || "?"),
+      el("div", {}, el("span", {}, "iOS instalado"), ios.version || "?"),
+      el("div", {}, el("span", {}, "Mais novo para este modelo"), st?.best_for_model || "desconhecido"),
+      el("div", {}, el("span", {}, "iOS mais recente"), st?.latest || "?"),
+      el("div", {}, el("span", {}, "Backup"), `${ios.encrypted ? "criptografado" : "sem criptografia"}${ios.last_backup ? ` · ${ios.last_backup}` : ""}`),
+      el("div", {}, el("span", {}, "Alertas do MVT"), String(ios.mvt_alerts ?? 0))),
+    st?.exploited?.length ? [el("h3", {}, "Falhas da Apple exploradas ativamente desde a sua versão"),
+      el("p", {}, st.exploited.map(cveLink).flatMap((x, i) => (i ? [", ", x] : [x])))] : null,
+    el("p", { class: "muted small" }, "Para iPhone, a base de boletins não tem detalhe por componente: a comparação "
+      + "usa as versões publicadas pela Apple e o catálogo de falhas exploradas da CISA."));
+}
+
+export function vulnsTab(v, ios) {
+  if (!v && ios) return iosVulns(ios);
   if (!v) return el("p", { class: "muted" }, "Vulnerabilidades não verificadas nesta varredura (base ausente ou relatório antigo).");
   const ui = { sev: new Set(["C", "H", "M", "L"]), kev: false, scope: "", q: "", shown: PAGE };
   const list = el("div");

@@ -10,6 +10,9 @@ Fontes (dados públicos):
   https://osv-vulnerabilities.storage.googleapis.com/Android/all.zip
 - CISA Known Exploited Vulnerabilities  https://www.cisa.gov/known-exploited-vulnerabilities-catalog
 - Chrome VersionHistory API             https://versionhistory.googleapis.com/
+- Apple software lookup (versões do iOS e modelos atendidos)  https://gdmf.apple.com/v2/pmv
+  (o certificado do gdmf é emitido pela Apple Root CA, que não está nos repositórios comuns; a raiz é
+  baixada de apple.com por TLS verificado e usada para validar a conexão)
 
 Formato compacto (uma linha por falha) para caber no pacote:
     vulns: [cve, spl, severidade, escopo, versões, componente, tipos, kev, resumo]
@@ -21,6 +24,7 @@ import argparse
 import io
 import json
 import re
+import ssl
 import sys
 import urllib.request
 import zipfile
@@ -32,6 +36,8 @@ OSV_URL = "https://osv-vulnerabilities.storage.googleapis.com/Android/all.zip"
 KEV_URL = "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json"
 CHROME_RELEASES = ("https://versionhistory.googleapis.com/v1/chrome/platforms/android/channels/stable/versions/all/"
                    "releases?order_by=starttime%20desc&pageSize=1000&filter=starttime%3E{since}")
+APPLE_PMV = "https://gdmf.apple.com/v2/pmv"
+APPLE_ROOT_CA = "https://www.apple.com/appleca/AppleIncRootCertificate.cer"
 OUT = Path(__file__).resolve().parent.parent / "desgrampa" / "dados" / "android_bulletins.json"
 
 SEVERITY = {"Critical": "C", "High": "H", "Moderate": "M", "Low": "L"}
@@ -129,6 +135,34 @@ def chrome_history(generated):
     return {"stable_major": stable, "first_stable": dict(sorted(first.items(), key=lambda kv: int(kv[0])))}
 
 
+def apple_context():
+    der = fetch(APPLE_ROOT_CA)
+    return ssl.create_default_context(cadata=ssl.DER_cert_to_PEM_cert(der))
+
+
+def ios_versions(pmv):
+    """{versões: {versão: data}, modelos: {ProductType: versão mais nova disponível}, mais nova}"""
+    versions, devices = {}, {}
+    for item in pmv.get("PublicAssetSets", {}).get("iOS", []) + pmv.get("AssetSets", {}).get("iOS", []):
+        v, posted = item["ProductVersion"], item.get("PostingDate", "")
+        versions[v] = min(versions.get(v, posted), posted) if versions.get(v) else posted
+        for model in item.get("SupportedDevices", []):
+            if model.startswith("iPhone") and vkey(v) > vkey(devices.get(model, "0")):
+                devices[model] = v
+    latest = max(versions, key=vkey) if versions else None
+    return {"versions": dict(sorted(versions.items(), key=lambda kv: vkey(kv[0]))),
+            "devices": dict(sorted(devices.items())), "latest": latest}
+
+
+def vkey(version):
+    return tuple(int(x) for x in re.findall(r"\d+", version))
+
+
+def kev_apple(kev_items):
+    return sorted(({"cve": v["cveID"], "added": v["dateAdded"], "name": v["vulnerabilityName"]}
+                   for v in kev_items if v["vendorProject"] == "Apple"), key=lambda v: v["added"])
+
+
 def kev_chromium(kev_items):
     return sorted(({"cve": v["cveID"], "added": v["dateAdded"], "name": v["vulnerabilityName"]}
                    for v in kev_items if v["vendorProject"] == "Google" and "Chromium" in v["product"]),
@@ -140,6 +174,8 @@ def main(argv=None):
     parser.add_argument("--osv", help="all.zip do OSV já baixado")
     parser.add_argument("--kev", help="known_exploited_vulnerabilities.json já baixado")
     parser.add_argument("--sem-chrome", action="store_true", help="não consultar a API de versões do Chrome")
+    parser.add_argument("--pmv", help="resposta de gdmf.apple.com/v2/pmv já baixada")
+    parser.add_argument("--sem-ios", action="store_true", help="não consultar as versões do iOS")
     parser.add_argument("-o", "--saida", default=str(OUT))
     args = parser.parse_args(argv)
 
@@ -157,12 +193,17 @@ def main(argv=None):
             "osv": OSV_URL,
             "kev": f"{KEV_URL} (versão {kev_data.get('catalogVersion')})",
             "chrome": "https://versionhistory.googleapis.com/",
+            "ios": APPLE_PMV,
         },
         "android_supported": supported_versions(rows, generated),
         "vulns": rows,
         "apps": APPS,
         "kev_chromium": kev_chromium(kev_data["vulnerabilities"]),
         "chrome": None if args.sem_chrome else chrome_history(generated),
+        "kev_apple": kev_apple(kev_data["vulnerabilities"]),
+        "ios": None if args.sem_ios else ios_versions(
+            json.loads(Path(args.pmv).read_bytes() if args.pmv else
+                       urllib.request.urlopen(APPLE_PMV, timeout=60, context=apple_context()).read())),
     }
     out = Path(args.saida)
     out.parent.mkdir(parents=True, exist_ok=True)

@@ -1,0 +1,39 @@
+name: Atualizar base de vulnerabilidades
+
+# Todo mês, depois do boletim de segurança do Android (primeira segunda-feira), regenera
+# desgrampa/dados/android_bulletins.json e abre um PR se algo mudou. Quem já instalou recebe a base
+# nova pelo botão "Atualizar bases" assim que o PR for aceito (ela é baixada de main).
+
+on:
+  schedule:
+    - cron: "0 9 8 * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  atualizar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Gerar base
+        run: python tools/build_bulletins.py
+      - name: Abrir PR se mudou
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if git diff --quiet desgrampa/dados/android_bulletins.json; then
+            echo "sem mudanças"; exit 0
+          fi
+          branch="bases/$(date +%Y-%m)"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "$branch"
+          git commit -am "dados: atualiza base de vulnerabilidades ($(date +%Y-%m))"
+          git push --force -u origin "$branch"
+          gh pr create --fill --base main --head "$branch" || echo "PR já existe"

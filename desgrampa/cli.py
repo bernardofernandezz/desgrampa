@@ -12,7 +12,7 @@ import logging
 import sys
 import webbrowser
 
-from . import __version__, adb, bulletins, iocs
+from . import __version__, adb, bulletins, iocs, oscompat
 from .paths import HOME
 
 
@@ -57,6 +57,8 @@ def serve(port, open_browser, ephemeral=False, attendance=False):
         print("\nEncerrado.")
     finally:
         httpd.state.cleanup()
+        if oscompat.FROZEN:
+            adb.kill_server()
     return 0
 
 
