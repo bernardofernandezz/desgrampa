@@ -66,6 +66,41 @@ class GroupingTests(unittest.TestCase):
         self.assertEqual(cands["com.vodaservices"]["user"], 10)
         self.assertNotIn("com.android.settings", cands)    # app do sistema nunca é sugerido
         self.assertNotIn("com.whatsapp", cands)
+        self.assertEqual(cands["com.systemservice"]["level"], "ameaca")
+        levels = [c["level"] for c in r["removal_candidates"]]
+        self.assertEqual(levels, sorted(levels, key=lambda lv: lv != "ameaca"))   # ameaças primeiro
+
+    def test_dossier_explains_why_and_what_the_app_can_do(self):
+        r = scan(FakeDevice(infected=True))
+        cands = {c["package"]: c["explain"] for c in r["removal_candidates"]}
+        spy = cands["com.systemservice"]
+        self.assertEqual(spy["kind"], "stalkerware")
+        self.assertTrue(any("TheTruthSpy" in w for w in spy["why"]))
+        self.assertIn("Tela", {c["theme"] for c in spy["can_do"]})              # acessibilidade
+        self.assertEqual((spy["recommendation"]["action"], spy["preselect"]), ("uninstall", True))
+        merc = cands["com.vodaservices"]                                         # preservar provas
+        self.assertEqual((merc["kind"], merc["recommendation"]["action"], merc["preselect"]), ("mercenario", "restrict", False))
+        anydesk = cands["com.anydesk.anydeskandroid"]                            # acesso remoto não é "stalkerware"
+        self.assertEqual(anydesk["kind"], "revisar")
+        self.assertFalse(any("listas públicas" in w for w in anydesk["why"]))
+
+    def test_legacy_mvt_category_does_not_make_monitoring_app_mercenary(self):
+        result = {"apps": [{"package": "com.life360.android.safetymapd", "sideloaded": False, "has_launcher": True}],
+                  "data": {}, "findings": [
+                      {"severity": "alta", "title": "MVT: App conhecido nas bases de spyware", "category": "mercenario",
+                       "package": "com.life360.android.safetymapd", "family": "Life360"},
+                      {"severity": "alta", "title": "App de monitoramento conhecido: Life360", "category": "spyware",
+                       "package": "com.life360.android.safetymapd", "family": "Life360"}]}
+        (cand,) = grouping.removal_candidates(result)
+        self.assertFalse(cand["mercenary"])
+        self.assertEqual((cand["explain"]["kind"], cand["explain"]["preselect"]), ("monitoramento", False))
+
+    def test_high_finding_app_is_offered_for_review(self):
+        result = {"apps": [{"package": "com.desconhecido"}], "data": {},
+                  "findings": [{"severity": "alta", "title": "App com acesso de acessibilidade", "category": "apps",
+                                "package": "com.desconhecido"}]}
+        (cand,) = grouping.removal_candidates(result)
+        self.assertEqual((cand["package"], cand["level"]), ("com.desconhecido", "revisar"))
 
     def test_old_report_mvt_messages_grouped_by_package(self):
         findings = [{"severity": "critica", "title": 'MVT: Found a known suspicious app with ID "com.life360.android.safetymapd" matching indicators from "Life360"',

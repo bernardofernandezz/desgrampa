@@ -5,6 +5,7 @@ Roda por último para aproveitar o resultado das outras verificações.
 
 from datetime import datetime, timedelta
 
+from .. import explain
 from . import (
     KNOWN_BENIGN,
     PRIVILEGED_PERMISSIONS,
@@ -64,6 +65,16 @@ def score_app(ctx, app):
     return sum(points for points, _ in present), [desc for points, desc in present if points > 0]
 
 
+def _signals(ctx, app):
+    """Sinais que viram capacidades em linguagem simples (explain.SIGNAL_CAPS)."""
+    policy = ctx.device_policy
+    flags = {"accessibility": app.name in ctx.accessibility_packages, "listener": app.name in ctx.listener_packages,
+             "admin": app.name in policy["admins"], "owner": app.name == policy["device_owner"],
+             "hidden": app.has_launcher is False,
+             "boot": "android.permission.RECEIVE_BOOT_COMPLETED" in app.requested}
+    return [k for k, on in flags.items() if on]
+
+
 def _severity(ctx, score):
     if score >= HIGH_SCORE:
         return "alta"
@@ -84,6 +95,7 @@ def run(ctx):
             "installer": app.installer, "sideloaded": app.sideloaded,
             "has_launcher": app.has_launcher, "first_install": app.first_install, "version": app.version,
             "sha256": apk.get("sha256"), "certificates": apk.get("certificates", []),
+            "can_do": explain.capabilities(app, _signals(ctx, app)),
         })
         severity = _severity(ctx, score)
         if severity and not ctx.iocs.match_package(app.name):   # stalkerware conhecido já foi reportado
