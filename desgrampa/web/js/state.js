@@ -13,10 +13,17 @@ export const VERDICT_PILL = { alto_risco: "bad", suspeito: "warn", atencao: "war
 export const SEV_PLURAL = { critica: ["crítico", "críticos"], alta: ["alto", "altos"], media: ["médio", "médios"],
   baixa: ["baixo", "baixos"], info: ["info", "info"] };
 
-export const API_VERSION = 3;
+export const API_VERSION = 4;
+
+const ADB_HINTS = {
+  linux: "instale o adb: sudo apt install adb (Debian/Ubuntu) · sudo pacman -S android-tools (Arch) · sudo dnf install android-tools (Fedora)",
+  macos: "instale o adb: brew install android-platform-tools — ou use o Desgrampa para macOS da página de downloads, que já traz o adb",
+  windows: "use o Desgrampa para Windows da página de downloads, que já traz o adb — ou instale o Android platform-tools e adicione-o ao PATH",
+};
+
+export const adbHint = () => ADB_HINTS[app.status?.system] || ADB_HINTS.linux;
 
 export const INSTALL_HINTS = {
-  adb: "instale o adb: sudo apt install adb · sudo pacman -S android-tools · brew install android-platform-tools",
   mvt: 'pip install "desgrampa[forense]"',
   restart: "desgrampa",
 };

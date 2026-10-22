@@ -1,7 +1,7 @@
 // Status do servidor e do aparelho: seletor, cartão do aparelho e página de dispositivos.
 
 import { $, api, el, fill, fmtDate, icon, num } from "./dom.js";
-import { API_VERSION, app, INSTALL_HINTS } from "./state.js";
+import { adbHint, API_VERSION, app, INSTALL_HINTS } from "./state.js";
 import { go } from "./router.js";
 import { resumeRunning } from "./scan.js";
 
@@ -164,7 +164,7 @@ function emptyDeviceCard(st) {
   let title, body;
   if (!st.adb) {
     title = "Ferramenta adb não instalada";
-    body = [el("div", { class: "device-sub" }, "Instale e recarregue a página:"), el("p", {}, el("code", {}, INSTALL_HINTS.adb))];
+    body = [el("div", { class: "device-sub" }, "Instale e recarregue a página:"), el("p", {}, el("code", {}, adbHint()))];
   } else if (st.error) {
     title = "Erro no adb";
     body = el("div", { class: "device-sub" }, st.error);
@@ -236,7 +236,7 @@ function renderDeviceCard() {
           dev.usb && `porta USB ${dev.usb}`))),
       el("span", { class: `pill ${ready ? "ok" : "warn"}` }, el("span", { class: "dot" }), ready ? "Conectado" : "Não autorizado")),
     statsRow([
-      ["usb", "USB", "Conectado", "ok"],
+      dev.wireless ? ["usb", "Conexão", "Wi-Fi", "ok"] : ["usb", "USB", "Conectado", "ok"],
       ["shield", "Depuração", ready ? "Autorizada" : "Toque em “Permitir” no celular", ready ? "" : "warn"],
       [bat?.charging ? "batteryCharging" : "battery", "Bateria", bat ? `${bat.level}%${bat.charging ? " · carregando" : ""}` : "—",
         bat && bat.level < LOW_BATTERY && !bat.charging ? "warn" : ""],
@@ -259,10 +259,20 @@ function renderDevicesPage() {
       el("div", { class: "grow" }, el("strong", {}, deviceName(d)),
         el("span", { class: "muted small" }, joinParts(d.serial, info.android && `Android ${info.android}`, info.rom))),
       el("span", { class: `pill ${ready ? "ok" : "warn"}` }, el("span", { class: "dot" }), state),
-      ready ? el("button", { onclick: () => { app.serial = d.serial; go("#varredura"); refreshStatus(); } }, "Usar este") : null);
+      ready ? el("button", { onclick: () => { app.serial = d.serial; go("#varredura"); refreshStatus(); } }, "Usar este") : null,
+      d.wireless ? el("button", { onclick: () => disconnect(d.serial) }, "Desconectar Wi-Fi") : null);
   });
   fill($("#devices-list"), el("div", { class: "card" },
     el("h2", {}, "Detectados agora"),
-    el("p", { class: "muted small" }, st.adb ? `adb: ${st.adb}` : `adb não instalado — ${INSTALL_HINTS.adb}`),
-    rows.length ? rows : el("div", { class: "empty" }, "Nenhum aparelho detectado pelo cabo USB.")));
+    el("p", { class: "muted small" }, st.adb ? `adb: ${st.adb}` : `adb não instalado — ${adbHint()}`),
+    rows.length ? rows : el("div", { class: "empty" }, "Nenhum aparelho detectado (cabo USB ou Wi-Fi).")));
+}
+
+async function disconnect(serial) {
+  try {
+    await api("/api/wireless/disconnect", { serial });
+  } catch (e) {
+    alert(e.message);
+  }
+  refreshStatus();
 }

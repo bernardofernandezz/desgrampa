@@ -1,0 +1,18 @@
+{"format": 1, "generated": "2099-01-01", "latest_spl": "2024-06-05",
+ "sources": {"osv": "fixture"},
+ "android_supported": ["13", "14"],
+ "vulns": [
+  ["CVE-2024-0001", "2024-01-01", "C", "aosp", ["13", "14"], "frameworks/base", ["RCE"], 0, "Falha crítica de teste."],
+  ["CVE-2024-0002", "2024-03-01", "H", "aosp", ["13"], "frameworks/av", ["EoP"], 1, "Falha explorada de teste."],
+  ["CVE-2024-0003", "2024-03-05", "H", "kernel", [], "linux_kernel", ["EoP"], 0, ""],
+  ["CVE-2024-0004", "2024-04-05", "H", "pixel", [], "unknown", ["EoP"], 1, ""],
+  ["CVE-2024-0005", "2024-05-05", "H", "qcom", [], "linux_kernel:Qualcomm", ["EoP"], 1, ""],
+  ["CVE-2024-0006", "2024-06-01", "M", "aosp", ["14"], "frameworks/base", ["ID"], 0, "Só no 14."]
+ ],
+ "apps": [{"package": "com.whatsapp", "name": "WhatsApp", "fixed": "2.22.16.12", "cve": "CVE-2022-36934",
+           "summary": "Falha de teste.", "url": "https://example.com"}],
+ "kev_chromium": [{"cve": "CVE-2024-1111", "added": "2024-02-01", "name": "teste"},
+                  {"cve": "CVE-2024-2222", "added": "2024-05-01", "name": "teste"}],
+ "chrome": {"stable_major": "125", "first_stable": {"120": "2023-12-01", "121": "2024-01-20", "122": "2024-02-20",
+                                                    "123": "2024-03-20", "124": "2024-04-20", "125": "2024-05-20"}}
+}

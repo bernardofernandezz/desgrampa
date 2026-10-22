@@ -2,7 +2,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from desgrampa import iocs
+from desgrampa import bulletins, iocs
 from desgrampa.checks import accounts, netactivity, network, pcnet, traces
 from desgrampa.context import (
     parse_appops_usage,
@@ -20,12 +20,13 @@ from .fake_device import FakeDevice
 
 FIXTURES = Path(__file__).parent / "fixtures"
 IOCS = iocs.load(FIXTURES / "iocs")   # bases mínimas e fixas: testes offline e reprodutíveis
+BULLETINS = bulletins.load(FIXTURES, FIXTURES)
 
 
 def scan(dev, mode="rapida", **kw):
     # sem internet nos testes: a referência DoH falha e o teste de DNS usa só o que o celular respondeu
     with mock.patch.object(netactivity, "doh_resolve", side_effect=OSError("offline")):
-        return run_scan(dev, IOCS, mode, save_evidence=False, **kw)
+        return run_scan(dev, IOCS, mode, save_evidence=False, bulletins=kw.pop("bulletins", BULLETINS), **kw)
 
 
 def titles(r):

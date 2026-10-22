@@ -10,18 +10,23 @@ import logging
 import sys
 import webbrowser
 
-from . import __version__, adb, iocs
+from . import __version__, adb, bulletins, iocs
 from .paths import HOME
 
 
 def update_bases():
-    print("Baixando bases de indicadores (AssoEchap + mvt-indicators)…")
+    print("Baixando bases de indicadores (AssoEchap + mvt-indicators) e de vulnerabilidades…")
     try:
         summary = iocs.update().summary()
     except Exception as e:
         print(f"Falhou: {e}", file=sys.stderr)
         return 1
     print(f"Pronto: {summary['total']} indicadores de {len(summary['collections'])} conjuntos.")
+    if bulletins.download():
+        db = bulletins.summary(bulletins.load())
+        print(f"Vulnerabilidades do Android: {db['total']} falhas, boletim mais recente {db['latest_spl']}.")
+    else:
+        print("Base de vulnerabilidades não atualizada (usando a que vem com o programa).")
     return 0
 
 

@@ -1,0 +1,78 @@
+name: Release
+
+# Gera o executável único de cada sistema (com o adb embutido), publica na release da tag com os
+# SHA256 e uma atestação de proveniência (Sigstore) que prova que o arquivo saiu deste workflow:
+#   gh attestation verify desgrampa-windows.exe --repo bernardofernandezz/desgrampa
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            asset: desgrampa-windows.exe
+          - os: macos-latest
+            asset: desgrampa-macos
+          - os: ubuntu-22.04        # glibc mais antiga = roda em mais distribuições
+            asset: desgrampa-linux
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Dependências
+        run: pip install . "pyinstaller>=6.10"
+      - name: Testes
+        run: python -m unittest
+      - name: Baixar adb
+        run: python packaging/baixar_adb.py
+      - name: Gerar executável
+        run: pyinstaller --clean --noconfirm packaging/desgrampa.spec
+      - name: Renomear
+        shell: bash
+        run: |
+          src=dist/desgrampa; [ -f dist/desgrampa.exe ] && src=dist/desgrampa.exe
+          mv "$src" "dist/${{ matrix.asset }}"
+          "dist/${{ matrix.asset }}" --version
+      - uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: dist/${{ matrix.asset }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset }}
+          path: dist/${{ matrix.asset }}
+
+  publish:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: SHA256
+        run: cd dist && sha256sum desgrampa-* > SHA256SUMS.txt && cat SHA256SUMS.txt
+      - name: Publicar release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          notes=$(awk '/^## \[/{n++} n==1' CHANGELOG.md)
+          gh release create "$GITHUB_REF_NAME" dist/* --title "Desgrampa $GITHUB_REF_NAME" --notes "$notes"

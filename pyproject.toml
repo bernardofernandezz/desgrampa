@@ -39,7 +39,7 @@ Issues = "https://github.com/bernardofernandezz/desgrampa/issues"
 include = ["desgrampa*"]
 
 [tool.setuptools.package-data]
-desgrampa = ["web/*.html", "web/*.css", "web/js/*.js"]
+desgrampa = ["web/*.html", "web/*.css", "web/js/*.js", "dados/*.json", "dados/*.yaml"]
 
 [tool.ruff]
 line-length = 120

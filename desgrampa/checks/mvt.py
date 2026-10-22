@@ -12,6 +12,7 @@ import zipfile
 from pathlib import Path
 
 from .. import iocs as iocs_mod
+from .. import oscompat
 from ..adb import AdbError
 from ..context import SkipCheck
 from ..paths import DATA_DIR, REPO_DIR
@@ -28,8 +29,8 @@ LEVELS = {"CRITICAL": "critica", "HIGH": "alta", "MEDIUM": "media", "LOW": "baix
 
 def mvt_path():
     # variável de ambiente > mesmo ambiente Python do Desgrampa > .venv do repositório > PATH
-    for candidate in (os.environ.get("DESGRAMPA_MVT"), Path(sys.prefix) / "bin" / "mvt-android",
-                      REPO_DIR / ".venv" / "bin" / "mvt-android", shutil.which("mvt-android")):
+    for candidate in (os.environ.get("DESGRAMPA_MVT"), oscompat.venv_script(sys.prefix, "mvt-android"),
+                      oscompat.venv_script(REPO_DIR / ".venv", "mvt-android"), shutil.which("mvt-android")):
         if candidate and Path(candidate).exists():
             return str(candidate)
     return None
@@ -40,8 +41,8 @@ def mvt_version():
     if not path:
         return None
     try:
-        out = subprocess.run([path, "--disable-update-check", "version"], capture_output=True,
-                             text=True, timeout=60, check=False).stdout
+        out = oscompat.run([path, "--disable-update-check", "version"], capture_output=True,
+                           text=True, timeout=60).stdout
     except (OSError, subprocess.TimeoutExpired):
         return None
     for line in out.splitlines():
@@ -81,7 +82,7 @@ def run(ctx):
     cmd.append(str(bugreport))
     env = {**os.environ, "MVT_DATA_FOLDER": str(DATA_DIR / "mvt")}
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, errors="replace", timeout=1200, env=env, check=False)
+        proc = oscompat.run(cmd, capture_output=True, text=True, errors="replace", timeout=1200, env=env)
     except subprocess.TimeoutExpired:
         raise SkipCheck("o MVT demorou demais (mais de 20 min)")
     (out_dir / "mvt.log").write_text(proc.stdout + "\n" + proc.stderr, encoding="utf-8")

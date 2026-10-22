@@ -28,6 +28,7 @@ from .checks import (
     settings,
     telephony,
     traces,
+    vulns,
 )
 from .context import ScanContext, SkipCheck
 
@@ -37,7 +38,7 @@ log = logging.getLogger(__name__)
 # netactivity/activity/certificates antes de risk, que fica por último.
 CHECKS = [packages, accessibility, notifications, admin, remote, device, firmware, certstore,
           network, netactivity, telephony, accounts, processes, certificates, activity, traces,
-          mvt, pcnet, settings, risk]
+          mvt, pcnet, settings, vulns, risk]
 
 VERDICTS = {
     "critica": ("alto_risco", "Alto risco",
@@ -116,7 +117,7 @@ def _device_summary(ctx):
     }
 
 
-def run_scan(device, iocs, mode="rapida", on_progress=None, options=None, save_evidence=True):
+def run_scan(device, iocs, mode="rapida", on_progress=None, options=None, save_evidence=True, bulletins=None):
     """Executa a varredura e devolve o resultado (dict). on_progress(fração, texto) acompanha o andamento."""
     report_progress = on_progress or (lambda _fraction, _step: None)
     current = {"check": 0}
@@ -126,6 +127,7 @@ def run_scan(device, iocs, mode="rapida", on_progress=None, options=None, save_e
 
     started = time.time()
     ctx = ScanContext(device, iocs, mode, progress, options)
+    ctx.bulletins = bulletins
     if save_evidence:
         ctx.evidence_dir = evidence.new_dir(device.serial, started)
 

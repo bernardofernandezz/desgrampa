@@ -35,6 +35,9 @@ CATEGORIES = [
      "Acessibilidade, leitura de notificações, combinação de permissões e uso recente de microfone/câmera/localização."),
     ("protecoes", "Proteções do sistema",
      "Play Protect, instalação de fontes desconhecidas e patch de segurança."),
+    ("vulns", "Vulnerabilidades conhecidas",
+     "Falhas dos boletins de segurança do Android ainda abertas no aparelho (com destaque para as exploradas "
+     "ativamente), versão sem suporte e Chrome/WebView e apps de mensagem desatualizados."),
 ]
 
 # Permissões/recursos considerados sensíveis para monitoramento -> (pontos, descrição)

@@ -1,7 +1,7 @@
 // Página de configurações: tema, ferramentas e bases de indicadores.
 
 import { $, api, el, fill, icon, table } from "./dom.js";
-import { app, INSTALL_HINTS } from "./state.js";
+import { adbHint, app, INSTALL_HINTS } from "./state.js";
 import { refreshStatus } from "./device.js";
 
 function iocsLine(iocs) {
@@ -38,7 +38,7 @@ export function renderSettings() {
     el("div", { class: "card" },
       el("h2", {}, "Ferramentas"),
       el("div", { class: "list-row" }, el("div", { class: "grow" }, el("strong", {}, "adb (Android Debug Bridge)"),
-        el("span", { class: "muted small" }, st?.adb || `não instalado — ${INSTALL_HINTS.adb}`)),
+        el("span", { class: "muted small" }, st?.adb || `não instalado — ${adbHint()}`)),
         el("span", { class: `pill ${st?.adb ? "ok" : "warn"}` }, st?.adb ? "instalado" : "ausente")),
       el("div", { class: "list-row" }, el("div", { class: "grow" }, el("strong", {}, "MVT — Mobile Verification Toolkit"),
         el("span", { class: "muted small" }, st?.mvt.installed ? `versão ${st.mvt.version}` : INSTALL_HINTS.mvt)),

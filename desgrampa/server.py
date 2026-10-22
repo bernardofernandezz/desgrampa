@@ -9,6 +9,9 @@ Rotas:
     POST /api/scan                          {serial, mode, pc_network}
     POST /api/actions                       {report, package, action, confirm, keep_apk, mercenary_ack}
     POST /api/iocs/update                   baixa as bases de indicadores em segundo plano
+    POST /api/wireless/pair                 {host, port, code}   depuração sem fio: pareamento
+    POST /api/wireless/connect              {host, port}
+    POST /api/wireless/disconnect           {serial}
 """
 
 import json
@@ -21,11 +24,11 @@ import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlsplit
 
-from . import actions, adb, devinfo, evidence, iocs, report, scanner
+from . import __version__, actions, adb, bulletins, devinfo, evidence, iocs, oscompat, report, scanner
 from .checks import mvt
 from .paths import WEB_DIR
 
-API_VERSION = 3              # a interface avisa quando o servidor em execução é mais antigo que ela
+API_VERSION = 4              # a interface avisa quando o servidor em execução é mais antigo que ela
 DEVICE_INFO_CACHE_S = 20     # evita chamar o adb a cada atualização da tela
 SCAN_MODES = ("rapida", "completa")
 
@@ -47,6 +50,7 @@ class State:
         self.mvt = None
         self.device_cache = {}
         self.iocs = iocs.load()
+        self.bulletins = bulletins.load()
         self.iocs_job = {"state": "ok" if self.iocs.total_count else "ausente", "error": None}
         if not self.iocs.total_count:
             self.refresh_iocs()   # primeira execução: baixa as bases em segundo plano
@@ -87,7 +91,8 @@ class State:
 
         def worker():
             try:
-                job["result"] = scanner.run_scan(adb.Device(serial), self.iocs, mode, progress, options)
+                job["result"] = scanner.run_scan(adb.Device(serial), self.iocs, mode, progress, options,
+                                                 bulletins=self.bulletins)
                 job.update(state="done", progress=1.0, step="Concluído")
             except Exception as e:
                 log.exception("varredura de %s falhou", serial)
@@ -105,6 +110,8 @@ class State:
         def worker():
             try:
                 self.iocs = iocs.update()
+                bulletins.download()
+                self.bulletins = bulletins.load()
                 self.iocs_job.update(state="ok", error=None)
             except Exception as e:
                 self.iocs_job.update(state="erro", error=str(e))
@@ -126,7 +133,9 @@ class Handler(BaseHTTPRequestHandler):
         (re.compile(r"/api/reports"), "get_reports"),
         (re.compile(r"/api/reports/([\w.-]+)/(relatorio\.(?:json|html))"), "get_report"),
     ]
-    POST_ROUTES = {"/api/scan": "post_scan", "/api/actions": "post_action", "/api/iocs/update": "post_iocs_update"}
+    POST_ROUTES = {"/api/scan": "post_scan", "/api/actions": "post_action", "/api/iocs/update": "post_iocs_update",
+                   "/api/wireless/pair": "post_wireless_pair", "/api/wireless/connect": "post_wireless_connect",
+                   "/api/wireless/disconnect": "post_wireless_disconnect"}
 
     @property
     def state(self):
@@ -175,8 +184,10 @@ class Handler(BaseHTTPRequestHandler):
     def get_status(self):
         st = self.state
         status = {
-            "api": API_VERSION, "adb": adb.adb_path(), "devices": [], "error": None,
+            "api": API_VERSION, "version": __version__, "system": oscompat.SYSTEM,
+            "adb": adb.adb_path(), "devices": [], "error": None,
             "iocs": {**st.iocs.summary(), "job": st.iocs_job},
+            "bulletins": bulletins.summary(st.bulletins),
             "mvt": st.mvt_status(),
             "running": [{k: j[k] for k in ("id", "serial", "mode", "progress", "step")}
                         for j in st.scans.values() if j["state"] == "running"],
@@ -248,6 +259,17 @@ class Handler(BaseHTTPRequestHandler):
     def post_iocs_update(self, _body):
         self.state.refresh_iocs()
         self._send(202, {"job": self.state.iocs_job})
+
+    def post_wireless_pair(self, body):
+        adb.pair(body.get("host"), body.get("port"), body.get("code"))
+        self._send(200, {"paired": True})
+
+    def post_wireless_connect(self, body):
+        self._send(200, {"serial": adb.connect(body.get("host"), body.get("port"))})
+
+    def post_wireless_disconnect(self, body):
+        adb.disconnect(body.get("serial") or "")
+        self._send(200, {"ok": True})
 
     # ---- utilidades
 

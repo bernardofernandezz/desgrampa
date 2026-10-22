@@ -9,3 +9,6 @@ dist/
 # dados locais: bases baixadas e relatórios com evidências do SEU aparelho — nunca versionar
 data/
 relatorios/
+
+# empacotamento
+packaging/platform-tools/

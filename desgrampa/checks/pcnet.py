@@ -13,6 +13,7 @@ import subprocess
 import urllib.error
 import urllib.request
 
+from .. import oscompat
 from ..context import is_public_ip
 from . import Finding
 
@@ -41,7 +42,10 @@ def available(ctx):
 # ---------------------------------------------------------------- consultas
 
 def _run(*cmd):
-    return subprocess.run(cmd, capture_output=True, text=True, check=False).stdout
+    try:
+        return oscompat.run(cmd, capture_output=True, text=True, errors="replace", timeout=TIMEOUT).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
 
 
 def _system_resolve(name):
@@ -80,20 +84,63 @@ def parse_ip_neigh(out):
             for m in re.finditer(r"^(\S+) dev \S+ lladdr ([0-9a-fA-F:]{17})", out, re.M)}
 
 
+def _normalize_mac(mac):
+    """'a:b:c:d:e:f' (macOS) ou 'aa-bb-cc-dd-ee-ff' (Windows) -> 'aa:bb:cc:dd:ee:ff'"""
+    return ":".join(part.zfill(2) for part in re.split("[:-]", mac.lower()))
+
+
+def parse_arp_a(out):
+    """`arp -a` do Windows ou `arp -an` do macOS -> {ip: mac} (ignora entradas incompletas e broadcast)"""
+    table = {}
+    for m in re.finditer(r"\(?(\d{1,3}(?:\.\d{1,3}){3})\)?\s+(?:at\s+)?([0-9a-fA-F]{1,2}(?:[:-][0-9a-fA-F]{1,2}){5})\b", out):
+        mac = _normalize_mac(m.group(2))
+        if mac not in ("ff:ff:ff:ff:ff:ff", "00:00:00:00:00:00") and not mac.startswith("01:00:5e"):
+            table[m.group(1)] = mac
+    return table
+
+
+def parse_route_print(out):
+    """`route print -4 0.0.0.0` (Windows) -> (gateway, ip da interface) da rota padrão de menor métrica"""
+    routes = re.findall(r"^\s*0\.0\.0\.0\s+0\.0\.0\.0\s+(\d[\d.]+)\s+(\d[\d.]+)\s+(\d+)", out, re.M)
+    if not routes:
+        return None, None
+    gateway, iface, _ = min(routes, key=lambda r: int(r[2]))
+    return gateway, iface
+
+
+def parse_route_get(out):
+    """`route -n get default` (macOS) -> (gateway, interface)"""
+    gw = re.search(r"gateway:\s*(\S+)", out)
+    iface = re.search(r"interface:\s*(\S+)", out)
+    return (gw.group(1) if gw else None), (iface.group(1) if iface else None)
+
+
+def _network_config():
+    """(gateway, interface, servidores DNS, vizinhos {ip: mac}) do computador, conforme o sistema."""
+    if oscompat.IS_WINDOWS:
+        gateway, iface = parse_route_print(_run("route", "print", "-4", "0.0.0.0"))
+        dns = _run("powershell", "-NoProfile", "-Command",
+                   "(Get-DnsClientServerAddress -AddressFamily IPv4).ServerAddresses").split()
+        return gateway, iface, sorted(set(dns), key=dns.index), parse_arp_a(_run("arp", "-a"))
+    if oscompat.IS_MAC:
+        gateway, iface = parse_route_get(_run("route", "-n", "get", "default"))
+        dns = re.findall(r"nameserver\[\d+\]\s*:\s*(\S+)", _run("scutil", "--dns"))
+        return gateway, iface, sorted(set(dns), key=dns.index), parse_arp_a(_run("arp", "-an"))
+    gw = re.search(r"default via (\S+) dev (\S+)", _run("ip", "route", "show", "default"))
+    try:
+        with open("/etc/resolv.conf", encoding="utf-8") as f:
+            dns = re.findall(r"^nameserver\s+(\S+)", f.read(), re.M)
+    except OSError:
+        dns = []
+    return (gw.group(1) if gw else None), (gw.group(2) if gw else None), dns, parse_ip_neigh(_run("ip", "neigh"))
+
+
 # ---------------------------------------------------------------- testes
 
 def _check_gateway(data, findings):
     """Gateway, DNS do computador e ARP spoofing (MAC do roteador respondendo por outro IP)."""
-    gw = re.search(r"default via (\S+) dev (\S+)", _run("ip", "route", "show", "default"))
-    data["gateway"], data["interface"] = (gw.group(1), gw.group(2)) if gw else (None, None)
-    try:
-        with open("/etc/resolv.conf", encoding="utf-8") as f:
-            data["dns_servers"] = re.findall(r"^nameserver\s+(\S+)", f.read(), re.M)
-    except OSError:
-        data["dns_servers"] = []
-
-    neighbors = parse_ip_neigh(_run("ip", "neigh"))
-    gateway = data["gateway"]
+    gateway, data["interface"], data["dns_servers"], neighbors = _network_config()
+    data["gateway"] = gateway
     if gateway not in neighbors:
         return
     mac = data["gateway_mac"] = neighbors[gateway]

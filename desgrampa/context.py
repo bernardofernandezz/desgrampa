@@ -54,6 +54,7 @@ class PackageInfo:
     code_path: str | None = None
     system_flag: bool = False
     shared_user: str | None = None
+    version: str | None = None                     # versionName
 
     @property
     def sideloaded(self):
@@ -92,7 +93,8 @@ def parse_package_names(out):
 
 
 # linhas "chave=valor" do dumpsys package -> campo do resultado (só o primeiro valor de cada pacote vale)
-DUMPSYS_FIELDS = {"firstInstallTime": "first_install", "codePath": "code_path", "userId": "app_id", "appId": "app_id"}
+DUMPSYS_FIELDS = {"firstInstallTime": "first_install", "codePath": "code_path", "userId": "app_id", "appId": "app_id",
+                  "versionName": "version"}
 PERMISSION_SECTIONS = {"requested permissions:": "requested", "install permissions:": "install",
                        "runtime permissions:": "runtime"}
 PERMISSION_LINE = re.compile(r"^(\w+\.[\w.]+)(?::\s*granted=(true|false))?(?:[,:\s]|$)")
@@ -105,12 +107,12 @@ def _leading_int(text):
 
 def _new_package_entry():
     return {"requested": set(), "granted": set(), "first_install": None, "code_path": None,
-            "system": False, "shared_user": None, "app_id": None}
+            "system": False, "shared_user": None, "app_id": None, "version": None}
 
 
 def parse_dumpsys_package(out):
     """`dumpsys package packages` -> {pkg: {requested, granted, first_install, code_path, system,
-    shared_user, app_id}}"""
+    shared_user, app_id, version}}"""
     packages, cur, section = {}, None, None
     for line in out.splitlines():
         if line.startswith("Hidden system packages:"):
@@ -293,6 +295,7 @@ class ScanContext:
         self.apk_info = {}       # pacote -> {"sha256", "certificates"}  (certificates.py)
         self.sensor_usage = {}   # pacote -> uso recente de microfone/câmera/...  (activity.py)
         self.app_rows = []       # tabela de apps com pontuação  (risk.py)
+        self.bulletins = None    # base de vulnerabilidades (bulletins.load); vulns.py carrega se faltar
         self._cache = {}
 
     @property
@@ -424,5 +427,6 @@ class ScanContext:
                 code_path=d.get("code_path"),
                 system_flag=d.get("system", False),
                 shared_user=d.get("shared_user"),
+                version=d.get("version"),
             )
         return packages
