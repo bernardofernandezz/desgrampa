@@ -20,8 +20,19 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/); 
 - **Plano de limpeza**: o Desgrampa propõe uma ação para cada app (pré-marcando só espionagem clara, nunca
   spyware mercenário), o usuário revisa, autoriza (digitando REMOVER se houver remoções) e acompanha a
   execução item a item. Cada ação fica registrada com o motivo e a origem (plano ou individual).
+- **Identificação do relatório no painel**: cabeçalho com aparelho, nº de série, sistema/patch, data, tipo,
+  duração, ID do relatório e SHA-256 (com botão de copiar), para conferir com a pasta de evidências.
+- **Comparação com a varredura anterior** do mesmo aparelho (modos Simples e Técnico): quantos achados são
+  novos, quantos não aparecem mais e quantos continuam, com aviso quando os tipos de varredura diferem.
+  Achados novos ganham o selo “novo” e o filtro “Só novos”.
+- **Código de cada achado** (`#01`, `#02`…) com link direto, para citar um achado em atendimento ou conversa.
+- **Histórico do aparelho** no cartão da varredura e contador de relatórios na barra lateral; “Última
+  verificação” abre o relatório.
 
 ### Alterado
+- **Página de relatórios**: agrupada por aparelho, com busca, barra de gravidade, tendência em relação à
+  varredura anterior (ex.: “+2 críticos”), data relativa, nomes legíveis (“Rápida”, “Samsung”) e o ID de
+  cada relatório; ao abrir um relatório, a navegação mostra “Relatórios › aparelho › data”.
 - **Relatório HTML mais fácil de entender**: começa com o resumo em linguagem simples, as 13 áreas como
   perguntas do dia a dia, os apps suspeitos explicados, o que fazer agora e as alterações feitas (com o
   motivo); os detalhes técnicos vêm depois. Gravidade em palavras ("Grave", "Preocupante"…).

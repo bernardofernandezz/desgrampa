@@ -26,7 +26,8 @@
       <a href="#dispositivos" data-page="dispositivos">
         <svg viewBox="0 0 24 24" class="ico"><rect x="6" y="2" width="12" height="20" rx="2.5"/><path d="M11 18h2"/></svg>Dispositivos</a>
       <a href="#relatorios" data-page="relatorios">
-        <svg viewBox="0 0 24 24" class="ico"><path d="M14 2H7a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7l-5-5Z"/><path d="M14 2v5h5M9 13h6M9 17h6"/></svg>Relatórios</a>
+        <svg viewBox="0 0 24 24" class="ico"><path d="M14 2H7a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7l-5-5Z"/><path d="M14 2v5h5M9 13h6M9 17h6"/></svg>Relatórios<span class="nav-count hidden" id="nav-reports-count"
+          title="Varreduras salvas"></span></a>
       <a href="#atendimento" data-page="atendimento" id="nav-atendimento" class="hidden">
         <svg viewBox="0 0 24 24" class="ico"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0M16 4.5a3.5 3.5 0 0 1 0 7M21.5 20a6.5 6.5 0 0 0-4-6"/></svg>Atendimento</a>
       <a href="#ajuda" data-page="ajuda">
@@ -37,7 +38,7 @@
     <div class="sys-status" id="sys-status">
       <div class="sys-line"><span class="dot"></span><span id="sys-text">Conectando…</span></div>
       <div class="muted small">Última verificação</div>
-      <div class="small" id="last-scan">—</div>
+      <a class="small last-scan" id="last-scan" href="#relatorios">—</a>
     </div>
   </aside>
 
