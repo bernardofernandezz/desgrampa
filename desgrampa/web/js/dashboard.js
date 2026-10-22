@@ -144,7 +144,7 @@ export function renderDashboard(container, r, links, reload, focus = {}) {
     store.set(VIEW_KEY, view);
     for (const b of modeButtons) b.classList.toggle("on", b.dataset.view === view);
     if (category) { ui.category = category; ui.tab = "achados"; }
-    fill(body, view === "simples" ? [simpleView(r, (cid) => setView("tecnico", cid)), suggestionsCard(r, reload)] : technical());
+    fill(body, view === "simples" ? simpleView(r, (cid) => setView("tecnico", cid), suggestionsCard(r, reload)) : technical());
     if (category) panel.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 

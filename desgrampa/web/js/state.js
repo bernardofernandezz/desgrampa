@@ -13,6 +13,10 @@ export const VERDICT_PILL = { alto_risco: "bad", suspeito: "warn", atencao: "war
 export const SEV_PLURAL = { critica: ["crítico", "críticos"], alta: ["alto", "altos"], media: ["médio", "médios"],
   baixa: ["baixo", "baixos"], info: ["info", "info"] };
 
+// Nome de cada ação sobre um app (actions.py), para históricos e linha do tempo
+export const ACTION_NOUN = { restrict: "Corte de acessos", disable: "Desativação", uninstall: "Remoção",
+  enable: "Reativação" };
+
 export const API_VERSION = 4;
 
 const ADB_HINTS = {

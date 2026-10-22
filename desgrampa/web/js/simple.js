@@ -101,7 +101,8 @@ function exposureGauge(exp) {
   );
 }
 
-export function simpleView(r, openArea) {
+// `threats`: painel de ameaças (actions.js), mostrado logo abaixo do semáforo.
+export function simpleView(r, openArea, threats = null) {
   const [color, label, text] = LIGHT[r.verdict.code] || LIGHT.ok;
   const exp = r.data?.vulns?.exposure;
   const byCat = (cid) => r.findings.filter((f) => f.category === cid && f.severity !== "info");
@@ -115,6 +116,7 @@ export function simpleView(r, openArea) {
           "Isso não garante que o celular esteja limpo: nenhuma ferramenta consegue provar isso. Spyware muito "
           + "sofisticado pode não deixar rastros visíveis pelo cabo.") : null),
       exposureGauge(exp)),
+    threats,
     el("h3", {}, "O que fazer agora"),
     el("ol", { class: "next-steps" }, nextSteps(r).map((s) => el("li", { class: `s-${s.sev}` },
       el("strong", {}, s.title), el("span", {}, s.text)))),

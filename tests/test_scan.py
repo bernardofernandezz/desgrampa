@@ -238,7 +238,8 @@ class ScanTests(unittest.TestCase):
         scan(dev, mode="completa")
         forbidden = ("pm uninstall", "pm disable", "pm clear", "pm grant", "pm revoke", "settings put",
                      "settings delete", "rm ", "am ", "cmd role add", "cmd role remove", "svc ", "reboot",
-                     "setprop", "input ", "service call")
+                     "setprop", "input ", "service call", "pm enable", "cmd appops set", "cmd notification",
+                     "dpm ")
         for cmd in dev.commands:
             self.assertFalse(cmd.startswith(forbidden), cmd)
 

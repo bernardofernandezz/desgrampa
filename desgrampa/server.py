@@ -20,7 +20,7 @@ Rotas:
     GET  /api/ios                           ferramentas e iPhones conectados
     POST /api/ios/scan                      {udid} (backup pelo cabo) ou {backup_path}, mais {password}
     POST /api/scan                          {serial, mode, pc_network}
-    POST /api/actions                       {report, package, action, confirm, keep_apk, mercenary_ack}
+    POST /api/actions                       {report, package, action, confirm|consent, keep_apk, mercenary_ack, via}
     POST /api/iocs/update                   baixa as bases de indicadores em segundo plano
     POST /api/wireless/pair                 {host, port, code}   depuração sem fio: pareamento
     POST /api/wireless/connect              {host, port}
@@ -65,6 +65,7 @@ DEVICE_INFO_CACHE_S = 20     # evita chamar o adb a cada atualização da tela
 SCAN_MODES = ("rapida", "completa")
 
 log = logging.getLogger(__name__)
+PLAN_CONFIRM = "REMOVER"   # digitado uma vez para aprovar as remoções de um plano de limpeza
 
 
 TEMP_PREFIX = "desgrampa-"
@@ -414,10 +415,16 @@ class Handler(BaseHTTPRequestHandler):
         candidate = next((c for c in result["removal_candidates"] if c["package"] == pkg), None)
         if not candidate:
             raise ApiError(400, "este app não está entre as sugestões de remoção deste relatório")
-        if body.get("confirm") != pkg:
+        # remover é definitivo: exige o nome do pacote digitado (ou, no plano de limpeza revisado pelo usuário,
+        # a palavra PLAN_CONFIRM digitada uma vez para o plano todo); as ações reversíveis, o aceite explícito
+        via = "plano" if body.get("via") == "plano" else "individual"
+        typed = body.get("confirm")
+        if action == "uninstall" and typed != pkg and not (via == "plano" and typed == PLAN_CONFIRM):
             raise ApiError(400, "confirmação não confere: digite o nome exato do pacote")
-        if candidate["mercenary"] and not body.get("mercenary_ack"):
-            raise ApiError(400, "confirme que entende o risco de apagar evidências de spyware mercenário")
+        if action != "uninstall" and body.get("consent") is not True and typed != pkg:
+            raise ApiError(400, "confirme que você quer fazer esta alteração no aparelho")
+        if candidate["mercenary"] and action != "enable" and not body.get("mercenary_ack"):
+            raise ApiError(400, "confirme que entende o risco de alterar evidências de spyware mercenário")
 
         serial = result["device"]["serial"]
         self.state.ready_device(serial)
@@ -425,7 +432,7 @@ class Handler(BaseHTTPRequestHandler):
             if self.state.is_scanning(serial):
                 raise ApiError(409, "aguarde a varredura em andamento terminar")
             entry = actions.perform(adb.Device(serial), result["report_dir"], candidate, action,
-                                    keep_apk=bool(body.get("keep_apk", True)))
+                                    keep_apk=bool(body.get("keep_apk", True)), via=via)
         self.state.device_cache.pop(serial, None)
         self._send(200, entry)
 

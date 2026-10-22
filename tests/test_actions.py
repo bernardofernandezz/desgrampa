@@ -36,6 +36,15 @@ class PhoneWithApps:
             return "Success"
         if cmd.startswith("pm disable-user"):
             return f"Package {cmd.split()[-1]} new state: disabled-user"
+        if cmd.startswith("pm enable"):
+            return f"Package {cmd.split()[-1]} new state: enabled"
+        if cmd.endswith("get secure enabled_accessibility_services"):
+            return "com.systemservice/.Spy:com.google.android.marvin.talkback/.TalkBackService\n"
+        if cmd.endswith("get secure enabled_notification_listeners"):
+            return "com.systemservice/.Notif\n"
+        if cmd.startswith("dumpsys package"):
+            return ("    runtime permissions:\n      android.permission.READ_SMS: granted=true\n"
+                    "      android.permission.CAMERA: granted=false\n      android.permission.INTERNET: granted=true\n")
         return ""
 
     def pull(self, remote, local, timeout=300):
@@ -143,6 +152,29 @@ class ActionTests(unittest.TestCase):
         self.assertEqual(actions.perform(phone, self.dir, candidate(), "disable", keep_apk=False)["status"], "ok")
         self.assertEqual(actions.perform(phone, self.dir, candidate("com.outro.app"), "uninstall")["status"], "nao_instalado")
 
+    def test_restrict_cuts_access_but_keeps_app(self):
+        phone = PhoneWithApps({"com.systemservice"})
+        res = actions.perform(phone, self.dir, candidate(), "restrict", keep_apk=False)
+        self.assertEqual(res["status"], "ok", res)
+        self.assertIn("com.systemservice", phone.installed)                      # evidência preservada
+        cmds = phone.commands
+        # só o serviço do app sai da acessibilidade; o TalkBack fica
+        self.assertIn("settings --user 0 put secure enabled_accessibility_services "
+                      "com.google.android.marvin.talkback/.TalkBackService", cmds)
+        self.assertIn("settings --user 0 delete secure enabled_notification_listeners", cmds)
+        self.assertIn("cmd notification disallow_listener com.systemservice/.Notif 0", cmds)
+        self.assertIn("pm revoke --user 0 com.systemservice android.permission.READ_SMS", cmds)
+        self.assertFalse(any("CAMERA" in c or "INTERNET" in c for c in cmds if c.startswith("pm revoke")))
+        self.assertEqual(cmds[-1], "am force-stop --user 0 com.systemservice")
+        self.assertFalse(any(c.startswith(("pm uninstall", "pm disable")) for c in cmds))
+
+    def test_enable_reverts_disable(self):
+        phone = PhoneWithApps({"com.systemservice"})
+        res = actions.perform(phone, self.dir, candidate(), "enable")
+        self.assertEqual(res["status"], "ok")
+        self.assertEqual(res["saved"], [])                                        # reativar não copia o APK
+        self.assertIn("pm enable --user 0 com.systemservice", phone.commands)
+
     def test_extra_profile_uses_user_flag(self):
         phone = PhoneWithApps({"com.vodaservices"})
         actions.perform(phone, self.dir, candidate("com.vodaservices", user=10), "uninstall", keep_apk=False)
@@ -192,6 +224,21 @@ class ActionApiTests(unittest.TestCase):
             with e:
                 return e.code, json.load(e)
 
+    def test_cleanup_plan_uses_one_typed_word_and_logs_reason(self):
+        base = {"report": "rel_FAKE123", "action": "uninstall", "keep_apk": False, "package": "com.systemservice"}
+        code, body = self.post({**base, "confirm": "REMOVER"})
+        self.assertEqual(code, 400, body)                                   # fora do plano, só o nome do pacote
+        code, body = self.post({**base, "confirm": "remover", "via": "plano"})
+        self.assertEqual(code, 400, body)
+        code, body = self.post({**base, "confirm": "REMOVER", "via": "plano"})
+        self.assertEqual((code, body["status"], body["via"]), (200, "ok", "plano"))
+        self.assertIn("TheTruthSpy", body["reason"])
+        with urllib.request.urlopen(self.base + "/api/reports/rel_FAKE123/relatorio.html") as resp:
+            html = resp.read().decode("utf-8")
+        self.assertIn("plano de limpeza", html)
+        self.assertIn("Em poucas palavras", html)
+        self.assertIn("O que ele consegue fazer", html)
+
     def test_rejections_and_success(self):
         base = {"report": "rel_FAKE123", "action": "uninstall", "keep_apk": False}
         code, body = self.post({**base, "package": "com.whatsapp", "confirm": "com.whatsapp"})
@@ -201,11 +248,18 @@ class ActionApiTests(unittest.TestCase):
         code, body = self.post({**base, "package": "com.vodaservices", "confirm": "com.vodaservices"})
         self.assertEqual(code, 400, body)                                   # mercenário sem ciência
         self.assertEqual(self.phone.commands, [])                           # nada foi executado até aqui
+        code, body = self.post({**base, "action": "disable", "package": "com.systemservice"})
+        self.assertEqual(code, 400, body)                                   # reversível, mas sem consentimento
+        self.assertEqual(self.phone.commands, [])                           # nada foi executado até aqui
+        code, body = self.post({**base, "action": "restrict", "package": "com.systemservice", "consent": True})
+        self.assertEqual((code, body["status"]), (200, "ok"))
+        code, body = self.post({**base, "package": "com.systemservice", "consent": True})
+        self.assertEqual(code, 400, body)                                   # remover exige o nome digitado
         code, body = self.post({**base, "package": "com.systemservice", "confirm": "com.systemservice"})
         self.assertEqual((code, body["status"]), (200, "ok"))
         with urllib.request.urlopen(self.base + "/api/reports/rel_FAKE123/relatorio.json") as resp:
             report = json.load(resp)
-        self.assertEqual(report["actions"][0]["package"], "com.systemservice")
+        self.assertEqual([a["action"] for a in report["actions"]], ["restrict", "uninstall"])
 
 
 if __name__ == "__main__":

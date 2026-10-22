@@ -1,6 +1,7 @@
 // Abas técnicas novas: vulnerabilidades (CVEs com filtros) e linha do tempo do aparelho.
 
 import { el, fill, table, tag } from "./dom.js";
+import { ACTION_NOUN } from "./state.js";
 
 const SEV = { C: ["Crítica", "bad"], H: ["Alta", "warn"], M: ["Moderada", ""], L: ["Baixa", ""] };
 const SCOPE = { aosp: "Android", kernel: "Kernel Linux", qcom: "Chip Qualcomm", pixel: "Google Pixel" };
@@ -109,7 +110,7 @@ export function timelineEvents(r) {
     events.push({ time: e.time, kind: e.event === "removido" ? "removal" : spy.has(e.package) ? "spy" : "install",
       text: `${e.package} ${e.event} (histórico de bateria)` });
   }
-  for (const a of r.actions || []) events.push({ time: a.time, kind: "action", text: `${a.action}: ${a.package} — ${a.status}` });
+  for (const a of r.actions || []) events.push({ time: a.time, kind: "action", text: `${ACTION_NOUN[a.action] || a.action}: ${a.package} — ${a.status}` });
   events.push({ time: r.started, kind: "scan", text: `Varredura ${r.mode} pelo Desgrampa` });
   return events.filter((e) => /^\d{4}-\d{2}-\d{2}/.test(e.time) && !e.time.startsWith("1970") && !e.time.startsWith("2008"))
     .sort((a, b) => b.time.localeCompare(a.time));
