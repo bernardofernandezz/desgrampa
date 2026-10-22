@@ -8,6 +8,7 @@ import re
 from dataclasses import dataclass, field
 
 from .adb import AdbError
+from .util import DAY
 
 OFFICIAL_STORES = {
     "com.android.vending",            # Google Play
@@ -48,7 +49,6 @@ class PackageInfo:
     granted: set = field(default_factory=set)
     appops: set = field(default_factory=set)       # ops liberadas (GET_USAGE_STATS, SYSTEM_ALERT_WINDOW...)
     first_install: str | None = None
-    last_update: str | None = None
     has_launcher: bool | None = None               # None = não foi possível verificar
     battery_whitelisted: bool = False
     code_path: str | None = None
@@ -91,60 +91,58 @@ def parse_package_names(out):
     return {line.strip()[8:] for line in out.splitlines() if line.strip().startswith("package:")}
 
 
+# linhas "chave=valor" do dumpsys package -> campo do resultado (só o primeiro valor de cada pacote vale)
+DUMPSYS_FIELDS = {"firstInstallTime": "first_install", "codePath": "code_path", "userId": "app_id", "appId": "app_id"}
+PERMISSION_SECTIONS = {"requested permissions:": "requested", "install permissions:": "install",
+                       "runtime permissions:": "runtime"}
+PERMISSION_LINE = re.compile(r"^(\w+\.[\w.]+)(?::\s*granted=(true|false))?(?:[,:\s]|$)")
+
+
+def _leading_int(text):
+    digits = re.match(r"\d+", text)
+    return int(digits.group()) if digits else None
+
+
+def _new_package_entry():
+    return {"requested": set(), "granted": set(), "first_install": None, "code_path": None,
+            "system": False, "shared_user": None, "app_id": None}
+
+
 def parse_dumpsys_package(out):
-    """`dumpsys package packages` -> {pkg: {requested, granted, first_install, last_update,
-    code_path, system, shared_user, app_id}}"""
-    packages = {}
-    cur = None
-    section = None
+    """`dumpsys package packages` -> {pkg: {requested, granted, first_install, code_path, system,
+    shared_user, app_id}}"""
+    packages, cur, section = {}, None, None
     for line in out.splitlines():
         if line.startswith("Hidden system packages:"):
             break
-        m = re.match(r"^  Package \[([^\]]+)\]", line)
-        if m:
-            cur = packages.setdefault(m.group(1), {
-                "requested": set(), "granted": set(), "first_install": None, "last_update": None,
-                "code_path": None, "system": False, "shared_user": None, "app_id": None,
-            })
-            section = None
+        header = re.match(r"^  Package \[([^\]]+)\]", line)
+        if header:
+            cur, section = packages.setdefault(header.group(1), _new_package_entry()), None
             continue
         if cur is None:
             continue
-        s = line.strip()
-        if s in ("requested permissions:", "install permissions:", "runtime permissions:"):
-            section = s.split()[0]
-            continue
-        if s.startswith("firstInstallTime=") and not cur["first_install"]:
-            cur["first_install"] = s.split("=", 1)[1]
-            continue
-        if s.startswith("lastUpdateTime=") and not cur["last_update"]:
-            cur["last_update"] = s.split("=", 1)[1]
-            continue
-        if s.startswith("codePath=") and not cur["code_path"]:
-            cur["code_path"] = s.split("=", 1)[1]
-            continue
-        if re.match(r"^(?:pkgFlags|flags)=\[", s) and section is None:
-            cur["system"] = cur["system"] or " SYSTEM " in s
-            continue
-        if s.startswith("sharedUser="):
-            sm = re.search(r"\s([\w.]+)/\d+\}", s)
-            cur["shared_user"] = sm.group(1) if sm else s.split("=", 1)[1]
-            continue
-        am = re.match(r"^(?:userId|appId)=(\d+)", s)
-        if am and cur["app_id"] is None:
-            cur["app_id"] = int(am.group(1))
-            continue
-        if section:
-            # qualquer linha que não seja "nome.da.permissao[: granted=...]" encerra a seção
-            pm = re.match(r"^([\w]+\.[\w.]+)(?::\s*granted=(true|false))?(?:[,:\s]|$)", s)
-            if not pm:
-                section = None
-                continue
-            perm, granted = pm.group(1), pm.group(2)
-            if section == "requested":
-                cur["requested"].add(perm)
-            elif granted == "true":
-                cur["granted"].add(perm)
+        text = line.strip()
+        key, _, value = text.partition("=")
+
+        if text in PERMISSION_SECTIONS:
+            section = PERMISSION_SECTIONS[text]
+        elif key in DUMPSYS_FIELDS:
+            field_name = DUMPSYS_FIELDS[key]
+            if cur[field_name] is None:
+                cur[field_name] = _leading_int(value) if field_name == "app_id" else value
+        elif key in ("flags", "pkgFlags") and section is None:
+            cur["system"] = cur["system"] or " SYSTEM " in value
+        elif key == "sharedUser":
+            shared = re.search(r"\s([\w.]+)/\d+\}", value)
+            cur["shared_user"] = shared.group(1) if shared else value
+        elif section:
+            perm = PERMISSION_LINE.match(text)
+            if not perm:
+                section = None   # qualquer linha que não seja "nome.da.permissao[: granted=...]" encerra a seção
+            elif section == "requested":
+                cur["requested"].add(perm.group(1))
+            elif perm.group(2) == "true":
+                cur["granted"].add(perm.group(1))
     return packages
 
 
@@ -162,8 +160,8 @@ def parse_components(value):
     if not value or value == "null":
         return []
     result = []
-    for comp in value.split(":"):
-        comp = comp.strip()
+    for raw in value.split(":"):
+        comp = raw.strip()
         if "/" in comp:
             result.append((comp.split("/", 1)[0], comp))
     return result
@@ -236,7 +234,7 @@ def duration_seconds(text):
     if not m or not any(m.groups()):
         return None
     d, h, mi, s, _ = (int(g) if g else 0 for g in m.groups())
-    return d * 86400 + h * 3600 + mi * 60 + s
+    return d * DAY + h * 3600 + mi * 60 + s
 
 
 def parse_appops_usage(out):
@@ -286,11 +284,15 @@ class ScanContext:
         self.iocs = iocs
         self.mode = mode
         self.options = options or {}
-        self.progress = progress or (lambda msg: None)
+        self.progress = progress or (lambda _msg: None)
         self.notes = []          # limitações encontradas (comandos indisponíveis etc.)
         self.data = {}           # dados exibidos no dashboard, por categoria
         self.raw = {}            # saída bruta de cada comando (salva como evidência)
         self.evidence_dir = None
+        # resultados que uma verificação produz para outra usar (ex.: risk usa os dois primeiros)
+        self.apk_info = {}       # pacote -> {"sha256", "certificates"}  (certificates.py)
+        self.sensor_usage = {}   # pacote -> uso recente de microfone/câmera/...  (activity.py)
+        self.app_rows = []       # tabela de apps com pontuação  (risk.py)
         self._cache = {}
 
     @property
@@ -342,6 +344,14 @@ class ScanContext:
     def notification_listeners(self):
         return self._cached("nls", lambda: parse_components(
             self.setting("secure", "enabled_notification_listeners")))
+
+    @property
+    def accessibility_packages(self):
+        return {pkg for pkg, _ in self.accessibility}
+
+    @property
+    def listener_packages(self):
+        return {pkg for pkg, _ in self.notification_listeners}
 
     @property
     def device_policy(self):
@@ -409,7 +419,6 @@ class ScanContext:
                 granted=d.get("granted", set()),
                 appops=appops.get(name, set()),
                 first_install=d.get("first_install"),
-                last_update=d.get("last_update"),
                 has_launcher=(name in launcher) if launcher else None,
                 battery_whitelisted=name in whitelist,
                 code_path=d.get("code_path"),

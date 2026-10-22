@@ -8,6 +8,8 @@ import { showScan, startScan } from "./scan.js";
 import { loadReports, renderReportsPage } from "./reports.js";
 import { renderSettings } from "./settings.js";
 
+const STATUS_REFRESH_MS = 2500;
+
 function render() {
   const { page, arg } = route();
   for (const p of PAGES) $(`#page-${p}`).classList.toggle("hidden", p !== page);
@@ -30,4 +32,4 @@ loadReports();
 
 refreshStatus().then(render);
 
-setInterval(refreshStatus, 2500);
+setInterval(refreshStatus, STATUS_REFRESH_MS);

@@ -1,43 +1,102 @@
-"""Servidor HTTP local (somente 127.0.0.1) com a API da interface web."""
+"""Servidor HTTP local (somente 127.0.0.1) com a API usada pela interface web.
+
+Rotas:
+    GET  /api/status                        estado do adb, aparelhos, bases e varreduras em andamento
+    GET  /api/device/<serial>               resumo do aparelho (devinfo)
+    GET  /api/scan/<id>                     progresso/resultado de uma varredura
+    GET  /api/reports                       relatórios salvos
+    GET  /api/reports/<nome>/relatorio.json|html
+    POST /api/scan                          {serial, mode, pc_network}
+    POST /api/actions                       {report, package, action, confirm, keep_apk, mercenary_ack}
+    POST /api/iocs/update                   baixa as bases de indicadores em segundo plano
+"""
 
 import json
+import logging
 import mimetypes
 import re
 import threading
 import time
-import traceback
 import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import urlsplit
 
-from . import actions, adb, devinfo, grouping, iocs, report, scanner
+from . import actions, adb, devinfo, evidence, iocs, report, scanner
 from .checks import mvt
-from .paths import REPORTS_DIR, WEB_DIR
+from .paths import WEB_DIR
 
-API_VERSION = 3   # a interface avisa quando o servidor em execução é mais antigo que ela
+API_VERSION = 3              # a interface avisa quando o servidor em execução é mais antigo que ela
+DEVICE_INFO_CACHE_S = 20     # evita chamar o adb a cada atualização da tela
+SCAN_MODES = ("rapida", "completa")
+
+log = logging.getLogger(__name__)
+
+
+class ApiError(Exception):
+    def __init__(self, status, message):
+        super().__init__(message)
+        self.status = status
 
 
 class State:
+    """Estado do servidor: bases de indicadores, varreduras em andamento e caches."""
+
     def __init__(self):
         self.lock = threading.Lock()
-        self.iocs = iocs.load()
-        self.iocs_job = {"state": "ok" if self.iocs.total_count else "ausente", "error": None}
         self.scans = {}
-        if not self.iocs.total_count:
-            self.refresh_iocs()   # primeira execução: baixa as bases em segundo plano
         self.mvt = None
         self.device_cache = {}
+        self.iocs = iocs.load()
+        self.iocs_job = {"state": "ok" if self.iocs.total_count else "ausente", "error": None}
+        if not self.iocs.total_count:
+            self.refresh_iocs()   # primeira execução: baixa as bases em segundo plano
+
+    # ---- aparelhos
+
+    def ready_device(self, serial):
+        """Aparelho conectado e autorizado, ou ApiError."""
+        device = next((d for d in adb.list_devices() if d["serial"] == serial), None)
+        if not device or device["state"] != "device":
+            raise ApiError(409, f"conecte e autorize o aparelho {serial}")
+        return device
 
     def device_info(self, serial):
-        """Resumo do aparelho para o cartão (cache de 20 s para não martelar o adb)."""
         cached = self.device_cache.get(serial)
-        if cached and time.time() - cached[0] < 20:
+        if cached and time.time() - cached[0] < DEVICE_INFO_CACHE_S:
             return cached[1]
-        listed = next((d for d in adb.list_devices() if d["serial"] == serial), None)
-        if not listed or listed["state"] != "device":
-            raise adb.AdbError("aparelho não conectado ou não autorizado")
-        info = devinfo.summarize(serial, adb.Device(serial).shell(devinfo.COLLECT, timeout=30), listed.get("usb"))
+        device = self.ready_device(serial)
+        info = devinfo.summarize(serial, adb.Device(serial).shell(devinfo.COLLECT, timeout=30), device.get("usb"))
         self.device_cache[serial] = (time.time(), info)
         return info
+
+    # ---- varreduras
+
+    def is_scanning(self, serial):
+        return any(j["state"] == "running" and j["serial"] == serial for j in self.scans.values())
+
+    def start_scan(self, serial, mode, options):
+        job = {"id": uuid.uuid4().hex[:12], "state": "running", "progress": 0.0, "step": "Iniciando",
+               "result": None, "error": None, "serial": serial, "mode": mode}
+        with self.lock:
+            if self.is_scanning(serial):
+                raise ApiError(409, "Já existe uma varredura em andamento neste aparelho.")
+            self.scans[job["id"]] = job
+
+        def progress(fraction, step):
+            job["progress"], job["step"] = round(fraction, 3), step
+
+        def worker():
+            try:
+                job["result"] = scanner.run_scan(adb.Device(serial), self.iocs, mode, progress, options)
+                job.update(state="done", progress=1.0, step="Concluído")
+            except Exception as e:
+                log.exception("varredura de %s falhou", serial)
+                job.update(state="error", error=str(e))
+
+        threading.Thread(target=worker, daemon=True).start()
+        return job["id"]
+
+    # ---- bases e ferramentas
 
     def refresh_iocs(self):
         if self.iocs_job["state"] == "baixando":
@@ -54,202 +113,184 @@ class State:
         threading.Thread(target=worker, daemon=True).start()
 
     def mvt_status(self):
-        if self.mvt is None or not self.mvt["installed"]:
+        if self.mvt is None or not self.mvt["installed"]:   # reconsulta até o MVT ser instalado
             self.mvt = {"installed": bool(mvt.mvt_path()), "version": mvt.mvt_version()}
         return self.mvt
 
-    def start_scan(self, serial, mode, options):
-        scan_id = uuid.uuid4().hex[:12]
-        job = {"id": scan_id, "state": "running", "progress": 0.0, "step": "Iniciando",
-               "result": None, "error": None, "serial": serial, "mode": mode}
-        with self.lock:
-            if any(j["state"] == "running" and j["serial"] == serial for j in self.scans.values()):
-                raise ValueError("Já existe uma varredura em andamento neste aparelho.")
-            self.scans[scan_id] = job
 
-        def progress(frac, step):
-            job["progress"], job["step"] = round(frac, 3), step
+class Handler(BaseHTTPRequestHandler):
+    GET_ROUTES = [
+        (re.compile(r"/api/status"), "get_status"),
+        (re.compile(r"/api/device/([\w.:-]+)"), "get_device"),
+        (re.compile(r"/api/scan/(\w+)"), "get_scan"),
+        (re.compile(r"/api/reports"), "get_reports"),
+        (re.compile(r"/api/reports/([\w.-]+)/(relatorio\.(?:json|html))"), "get_report"),
+    ]
+    POST_ROUTES = {"/api/scan": "post_scan", "/api/actions": "post_action", "/api/iocs/update": "post_iocs_update"}
 
-        def worker():
-            try:
-                job["result"] = scanner.run_scan(adb.Device(serial), self.iocs, mode, progress, options)
-                job["state"], job["progress"], job["step"] = "done", 1.0, "Concluído"
-            except Exception as e:
-                traceback.print_exc()
-                job["state"], job["error"] = "error", str(e)
+    @property
+    def state(self):
+        return self.server.state
 
-        threading.Thread(target=worker, daemon=True).start()
-        return scan_id
+    def log_message(self, fmt, *args):
+        pass   # sem log de cada requisição no terminal
 
+    # ---- roteamento
 
-def make_handler(state, port):
-    allowed_hosts = {f"127.0.0.1:{port}", f"localhost:{port}"}
+    def do_GET(self):
+        if not self._host_ok():
+            return
+        path = urlsplit(self.path).path
+        for pattern, handler in self.GET_ROUTES:
+            match = pattern.fullmatch(path)
+            if match:
+                return self._dispatch(getattr(self, handler), *match.groups())
+        return self._static(path)
 
-    class Handler(BaseHTTPRequestHandler):
-        def log_message(self, fmt, *args):
-            pass
-
-        def _send(self, code, body, ctype="application/json; charset=utf-8", headers=None):
-            if isinstance(body, (dict, list)):
-                body = json.dumps(body, ensure_ascii=False)
-            if isinstance(body, str):
-                body = body.encode("utf-8")
-            self.send_response(code)
-            self.send_header("Content-Type", ctype)
-            self.send_header("Content-Length", str(len(body)))
-            self.send_header("Cache-Control", "no-store")
-            self.send_header("X-Content-Type-Options", "nosniff")
-            for k, v in (headers or {}).items():
-                self.send_header(k, v)
-            self.end_headers()
-            self.wfile.write(body)
-
-        def _host_ok(self):
-            # bloqueia DNS rebinding: só aceita requisições endereçadas ao próprio localhost
-            if self.headers.get("Host") not in allowed_hosts:
-                self._send(403, {"error": "host não permitido"})
-                return False
-            return True
-
-        def do_GET(self):
-            if not self._host_ok():
-                return
-            path = self.path.split("?")[0]
-            if path == "/api/status":
-                return self._status()
-            m = re.fullmatch(r"/api/device/([\w.:-]+)", path)
-            if m:
-                try:
-                    return self._send(200, state.device_info(m.group(1)))
-                except adb.AdbError as e:
-                    return self._send(503, {"error": str(e)})
-            if path == "/api/reports":
-                return self._send(200, devinfo.list_reports(REPORTS_DIR))
-            m = re.fullmatch(r"/api/reports/([\w.-]+)/(relatorio\.(?:json|html))", path)
-            if m:
-                target = devinfo.report_path(REPORTS_DIR, m.group(1), m.group(2))
-                if not target:
-                    return self._send(404, {"error": "relatório não encontrado"})
-                result = load_report(m.group(1))
-                if m.group(2).endswith(".html"):
-                    return self._send(200, report.render(result), "text/html; charset=utf-8",
-                                      {"Content-Disposition": f'attachment; filename="{m.group(1)}.html"'})
-                return self._send(200, result)
-            m = re.fullmatch(r"/api/scan/(\w+)(/report\.(html|json))?", path)
-            if m:
-                job = state.scans.get(m.group(1))
-                if not job:
-                    return self._send(404, {"error": "varredura não encontrada"})
-                if not m.group(2):
-                    return self._send(200, {k: job[k] for k in
-                                            ("id", "state", "progress", "step", "result", "error", "mode")})
-                if job["state"] != "done":
-                    return self._send(409, {"error": "varredura ainda não concluída"})
-                name = f"desgrampa-{job['result']['started'].replace(' ', '_').replace(':', '')}"
-                if m.group(3) == "html":
-                    return self._send(200, report.render(job["result"]), "text/html; charset=utf-8",
-                                      {"Content-Disposition": f'attachment; filename="{name}.html"'})
-                return self._send(200, json.dumps(job["result"], ensure_ascii=False, indent=2),
-                                  headers={"Content-Disposition": f'attachment; filename="{name}.json"'})
-            return self._static(path)
-
-        def do_POST(self):
-            if not self._host_ok():
-                return
-            if "application/json" not in (self.headers.get("Content-Type") or ""):
-                return self._send(415, {"error": "use application/json"})
-            try:
-                length = int(self.headers.get("Content-Length") or 0)
-                body = json.loads(self.rfile.read(length) or b"{}")
-            except (ValueError, json.JSONDecodeError):
-                return self._send(400, {"error": "JSON inválido"})
-            if self.path == "/api/scan":
-                serial, mode = body.get("serial"), body.get("mode", "rapida")
-                options = {"pc_network": bool(body.get("pc_network"))}
-                if mode not in ("rapida", "completa"):
-                    return self._send(400, {"error": "modo inválido"})
-                try:
-                    devices = {d["serial"]: d for d in adb.list_devices()}
-                except adb.AdbError as e:
-                    return self._send(503, {"error": str(e)})
-                if devices.get(serial, {}).get("state") != "device":
-                    return self._send(400, {"error": "aparelho não conectado ou não autorizado"})
-                try:
-                    return self._send(200, {"id": state.start_scan(serial, mode, options)})
-                except ValueError as e:
-                    return self._send(409, {"error": str(e)})
-            if self.path == "/api/actions":
-                return self._action(body)
-            if self.path == "/api/iocs/update":
-                state.refresh_iocs()
-                return self._send(202, {"job": state.iocs_job})
+    def do_POST(self):
+        if not self._host_ok():
+            return
+        handler = self.POST_ROUTES.get(urlsplit(self.path).path)
+        if not handler:
             return self._send(404, {"error": "não encontrado"})
+        # exigir JSON obriga o navegador a fazer preflight CORS, o que bloqueia POSTs de outros sites
+        if "application/json" not in (self.headers.get("Content-Type") or ""):
+            return self._send(415, {"error": "use application/json"})
+        try:
+            body = json.loads(self.rfile.read(int(self.headers.get("Content-Length") or 0)) or b"{}")
+        except ValueError:
+            return self._send(400, {"error": "JSON inválido"})
+        return self._dispatch(getattr(self, handler), body)
 
-        def _action(self, body):
-            name, pkg, action = body.get("report"), body.get("package"), body.get("action")
-            if action not in actions.ACTIONS:
-                return self._send(400, {"error": "ação inválida"})
-            if not name or not devinfo.report_path(REPORTS_DIR, name):
-                return self._send(404, {"error": "relatório não encontrado"})
-            result = load_report(name)
-            candidate = next((c for c in result["removal_candidates"] if c["package"] == pkg), None)
-            if not candidate:
-                return self._send(400, {"error": "este app não está entre as sugestões de remoção deste relatório"})
-            if body.get("confirm") != pkg:
-                return self._send(400, {"error": "confirmação não confere: digite o nome exato do pacote"})
-            if candidate["mercenary"] and not body.get("mercenary_ack"):
-                return self._send(400, {"error": "confirme que entende o risco de apagar evidências de spyware mercenário"})
-            serial = result["device"]["serial"]
+    def _dispatch(self, handler, *args):
+        try:
+            handler(*args)
+        except ApiError as e:
+            self._send(e.status, {"error": str(e)})
+        except adb.AdbError as e:
+            self._send(503, {"error": str(e)})
+
+    # ---- GET
+
+    def get_status(self):
+        st = self.state
+        status = {
+            "api": API_VERSION, "adb": adb.adb_path(), "devices": [], "error": None,
+            "iocs": {**st.iocs.summary(), "job": st.iocs_job},
+            "mvt": st.mvt_status(),
+            "running": [{k: j[k] for k in ("id", "serial", "mode", "progress", "step")}
+                        for j in st.scans.values() if j["state"] == "running"],
+        }
+        if status["adb"]:
             try:
-                devices = {d["serial"]: d for d in adb.list_devices()}
+                status["devices"] = adb.list_devices()
             except adb.AdbError as e:
-                return self._send(503, {"error": str(e)})
-            if devices.get(serial, {}).get("state") != "device":
-                return self._send(409, {"error": f"conecte e autorize o aparelho {serial} deste relatório"})
-            with state.lock:
-                if any(j["state"] == "running" and j["serial"] == serial for j in state.scans.values()):
-                    return self._send(409, {"error": "aguarde a varredura em andamento terminar"})
-                entry = actions.perform(adb.Device(serial), REPORTS_DIR / name, candidate, action,
-                                        keep_apk=bool(body.get("keep_apk", True)))
-            state.device_cache.pop(serial, None)
-            return self._send(200, entry)
+                status["error"] = str(e)
+        self._send(200, status)
 
-        def _status(self):
-            status = {"api": API_VERSION, "adb": adb.adb_path(), "devices": [], "error": None,
-                      "iocs": {**state.iocs.summary(), "job": state.iocs_job},
-                      "mvt": state.mvt_status(),
-                      "running": [{k: j[k] for k in ("id", "serial", "mode", "progress", "step")}
-                                  for j in state.scans.values() if j["state"] == "running"]}
-            if status["adb"]:
-                try:
-                    status["devices"] = adb.list_devices()
-                except adb.AdbError as e:
-                    status["error"] = str(e)
-            return self._send(200, status)
+    def get_device(self, serial):
+        self._send(200, self.state.device_info(serial))
 
-        def _static(self, path):
-            rel = "index.html" if path in ("/", "") else path.lstrip("/")
-            target = (WEB_DIR / rel).resolve()
-            if WEB_DIR not in target.parents or not target.is_file():
-                return self._send(404, "não encontrado", "text/plain; charset=utf-8")
-            ctype = mimetypes.guess_type(target.name)[0] or "application/octet-stream"
-            if ctype.startswith("text/") or ctype.endswith("javascript"):
-                ctype += "; charset=utf-8"
-            return self._send(200, target.read_bytes(), ctype)
+    def get_scan(self, scan_id):
+        job = self.state.scans.get(scan_id)
+        if not job:
+            raise ApiError(404, "varredura não encontrada")
+        self._send(200, {k: job[k] for k in ("id", "state", "progress", "step", "result", "error", "mode")})
 
-    return Handler
+    def get_reports(self):
+        self._send(200, evidence.list_reports())
+
+    def get_report(self, name, filename):
+        result = evidence.load(name)
+        if not result:
+            raise ApiError(404, "relatório não encontrado")
+        if filename.endswith(".html"):
+            disposition = {"Content-Disposition": f'attachment; filename="{name}.html"'}
+            return self._send(200, report.render(result), "text/html; charset=utf-8", disposition)
+        return self._send(200, result)
+
+    # ---- POST
+
+    def post_scan(self, body):
+        serial, mode = body.get("serial"), body.get("mode", "rapida")
+        if mode not in SCAN_MODES:
+            raise ApiError(400, "modo inválido")
+        self.state.ready_device(serial)
+        scan_id = self.state.start_scan(serial, mode, {"pc_network": bool(body.get("pc_network"))})
+        self._send(200, {"id": scan_id})
+
+    def post_action(self, body):
+        """Remove/desativa um app SUGERIDO no relatório, só com a confirmação digitada pelo usuário."""
+        name, pkg, action = body.get("report"), body.get("package"), body.get("action")
+        if action not in actions.ACTIONS:
+            raise ApiError(400, "ação inválida")
+        result = evidence.load(name) if name else None
+        if not result:
+            raise ApiError(404, "relatório não encontrado")
+        candidate = next((c for c in result["removal_candidates"] if c["package"] == pkg), None)
+        if not candidate:
+            raise ApiError(400, "este app não está entre as sugestões de remoção deste relatório")
+        if body.get("confirm") != pkg:
+            raise ApiError(400, "confirmação não confere: digite o nome exato do pacote")
+        if candidate["mercenary"] and not body.get("mercenary_ack"):
+            raise ApiError(400, "confirme que entende o risco de apagar evidências de spyware mercenário")
+
+        serial = result["device"]["serial"]
+        self.state.ready_device(serial)
+        with self.state.lock:
+            if self.state.is_scanning(serial):
+                raise ApiError(409, "aguarde a varredura em andamento terminar")
+            entry = actions.perform(adb.Device(serial), result["report_dir"], candidate, action,
+                                    keep_apk=bool(body.get("keep_apk", True)))
+        self.state.device_cache.pop(serial, None)
+        self._send(200, entry)
+
+    def post_iocs_update(self, _body):
+        self.state.refresh_iocs()
+        self._send(202, {"job": self.state.iocs_job})
+
+    # ---- utilidades
+
+    def _host_ok(self):
+        # bloqueia DNS rebinding: só aceita requisições endereçadas ao próprio localhost
+        port = self.server.server_address[1]
+        if self.headers.get("Host") not in (f"127.0.0.1:{port}", f"localhost:{port}"):
+            self._send(403, {"error": "host não permitido"})
+            return False
+        return True
+
+    def _send(self, code, body, content_type="application/json; charset=utf-8", headers=None):
+        if isinstance(body, (dict, list)):
+            body = json.dumps(body, ensure_ascii=False)
+        if isinstance(body, str):
+            body = body.encode("utf-8")
+        self.send_response(code)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        for key, value in (headers or {}).items():
+            self.send_header(key, value)
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _static(self, path):
+        target = (WEB_DIR / (path.lstrip("/") or "index.html")).resolve()
+        if WEB_DIR not in target.parents or not target.is_file():
+            return self._send(404, "não encontrado", "text/plain; charset=utf-8")
+        content_type = mimetypes.guess_type(target.name)[0] or "application/octet-stream"
+        if content_type.startswith("text/") or content_type.endswith("javascript"):
+            content_type += "; charset=utf-8"
+        return self._send(200, target.read_bytes(), content_type)
 
 
-def load_report(name):
-    """Relatório salvo + agrupamento/sugestões (calculados na hora) + histórico de ações."""
-    path = devinfo.report_path(REPORTS_DIR, name)
-    result = grouping.enrich(json.loads(path.read_text(encoding="utf-8")))
-    result["actions"] = actions.read_log(path.parent)
-    result["report_name"] = name
-    return result
+class Server(ThreadingHTTPServer):
+    daemon_threads = True
+
+    def __init__(self, port, state=None):
+        super().__init__(("127.0.0.1", port), Handler)
+        self.state = state or State()
 
 
 def serve(port=8765):
-    state = State()
-    httpd = ThreadingHTTPServer(("127.0.0.1", port), make_handler(state, port))
-    return httpd
+    return Server(port)

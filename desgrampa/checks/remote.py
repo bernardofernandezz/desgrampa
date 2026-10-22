@@ -48,7 +48,7 @@ def run(ctx):
             continue
         remote = pkg in REMOTE_ACCESS
         hidden = app.has_launcher is False
-        a11y = pkg in {p for p, _ in ctx.accessibility}
+        a11y = pkg in ctx.accessibility_packages
         seen.append({"package": pkg, "name": name, "type": "acesso remoto" if remote else "localização/parental",
                      "hidden": hidden, "accessibility": a11y})
         if ctx.iocs.match_package(pkg):

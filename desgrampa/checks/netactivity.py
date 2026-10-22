@@ -8,7 +8,7 @@ import secrets
 import urllib.request
 
 from ..context import is_public_ip
-from . import Finding, app_label
+from . import Finding, app_label, ioc_category
 
 NAME = "Conexões e DNS do aparelho"
 CATEGORY = "rede"
@@ -208,7 +208,7 @@ def _check_connections(ctx, data, findings):
                 "critica", f"Conexão ativa com servidor de spyware: {match.family}",
                 f"{app_label(ctx, pkg)} está conectado agora a {ip}:{port}, endereço ligado a {match}.",
                 "Não desligue o aparelho antes de salvar as evidências. Procure análise especializada.",
-                package=pkg, category="mercenario" if match.mercenary else "spyware", family=match.family))
+                package=pkg, category=ioc_category(match), family=match.family))
     data["connections"] = [{"package": k, "remotes": sorted(v)} for k, v in
                            sorted(by_app.items(), key=lambda kv: -len(kv[1]))]
     if not raw.strip():

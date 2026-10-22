@@ -3,7 +3,7 @@
 import re
 
 from ..context import parse_components, parse_package_names
-from . import Finding, app_label
+from . import Finding, app_label, ioc_category
 from .packages import ioc_finding
 
 NAME = "Contas e perfis"
@@ -52,7 +52,7 @@ def run(ctx):
                 "critica", f"Conta ligada a spyware: {match.family}",
                 f"A conta {a['name']} ({a['type']}) aparece nos indicadores de {match}.",
                 "Não apague nada. Procure análise forense especializada.",
-                category="mercenario" if match.mercenary else "spyware"))
+                category=ioc_category(match)))
         app = ctx.packages.get(a["app"]) if a["app"] else None
         if app and app.third_party and (app.sideloaded or app.has_launcher is False):
             findings.append(Finding(

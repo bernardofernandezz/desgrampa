@@ -7,6 +7,7 @@ versões anteriores do app.
 import re
 
 from .checks import CATEGORIES, SEVERITIES
+from .util import QUOTED_PACKAGE_RE
 
 SEV_RANK = {s: i for i, s in enumerate(SEVERITIES)}
 # títulos que trazem a família depois de ":" (relatórios antigos não têm o campo "family")
@@ -23,14 +24,11 @@ def _family(f):
     return m.group(1) if m else None
 
 
-QUOTED_PKG = re.compile(r"[\"']([a-zA-Z]\w*(?:\.\w+){2,})[\"']")
-
-
 def subject(f):
     """(chave, rótulo, tipo) da origem de um achado: o app, ou a verificação quando não há app."""
     pkg = f.get("package")
     if not pkg:   # relatórios antigos: alertas do MVT citam o pacote só na mensagem
-        m = QUOTED_PKG.search(f.get("title", ""))
+        m = QUOTED_PACKAGE_RE.search(f.get("title", ""))
         pkg = m.group(1) if m else None
     if pkg:
         return f"app:{pkg}", pkg, "app"

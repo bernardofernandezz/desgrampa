@@ -17,7 +17,6 @@ def run(ctx):
     if not procs:
         ctx.notes.append("Não foi possível listar processos")
         return findings
-    ctx.data["processes_count"] = len(procs)
 
     reported = set()
     system_bins = {}

@@ -19,10 +19,12 @@ from . import Finding
 NAME = "Rede local (teste pelo computador)"
 CATEGORY = "pcnet"
 
+TIMEOUT = 8
 TLS_SITES = ["www.google.com", "www.whatsapp.com", "signal.org", "www.gov.br", "www.wikipedia.org",
              "accounts.google.com", "www.icloud.com", "web.telegram.org"]
 DNS_SITES = ["www.google.com", "www.whatsapp.com", "signal.org", "www.gov.br", "www.facebook.com",
              "web.telegram.org"]
+PROXY_HEADERS = ("via", "x-forwarded-for", "x-bluecoat-via", "x-squid-error", "proxy-connection")
 INTERCEPTORS = re.compile(
     r"\b(?:fortinet|fortigate|palo ?alto|zscaler|netskope|blue ?coat|symantec web|cisco|umbrella|sophos|"
     r"kaspersky|eset|avast|avg|bitdefender|norton|mcafee|trend ?micro|forcepoint|untangle|"
@@ -36,6 +38,12 @@ def available(ctx):
     return None
 
 
+# ---------------------------------------------------------------- consultas
+
+def _run(*cmd):
+    return subprocess.run(cmd, capture_output=True, text=True, check=False).stdout
+
+
 def _system_resolve(name):
     try:
         return sorted({ai[4][0] for ai in socket.getaddrinfo(name, 443, socket.AF_INET)})
@@ -44,19 +52,26 @@ def _system_resolve(name):
 
 
 def _doh(name):
+    """Resolve via DNS-over-HTTPS (Cloudflare): canal criptografado que a rede não consegue adulterar."""
     req = urllib.request.Request(f"https://cloudflare-dns.com/dns-query?name={name}&type=A",
                                  headers={"Accept": "application/dns-json"})
-    with urllib.request.urlopen(req, timeout=8) as resp:
+    with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
         return sorted({a["data"] for a in json.load(resp).get("Answer", []) if a.get("type") == 1})
 
 
-def _tls(host):
+def _tls_issuer(host):
     ctx = ssl.create_default_context()
-    with socket.create_connection((host, 443), timeout=8) as sock, \
+    with socket.create_connection((host, 443), timeout=TIMEOUT) as sock, \
             ctx.wrap_socket(sock, server_hostname=host) as tls:
         cert = tls.getpeercert()
     issuer = dict(x[0] for x in cert.get("issuer", ()))
     return issuer.get("organizationName") or issuer.get("commonName") or "?"
+
+
+def _fetch(url):
+    req = urllib.request.Request(url, headers={"User-Agent": "desgrampa", "Cache-Control": "no-cache"})
+    with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
+        return resp.status, {k.lower(): v for k, v in resp.headers.items()}, resp.read(20000)
 
 
 def parse_ip_neigh(out):
@@ -65,45 +80,42 @@ def parse_ip_neigh(out):
             for m in re.finditer(r"^(\S+) dev \S+ lladdr ([0-9a-fA-F:]{17})", out, re.M)}
 
 
-def run(ctx):
-    findings = []
-    data = {}
+# ---------------------------------------------------------------- testes
 
-    ctx.progress("Testando a rede local a partir do computador")
-    route = subprocess.run(["ip", "route", "show", "default"], capture_output=True, text=True).stdout
-    gw = re.search(r"default via (\S+) dev (\S+)", route)
-    data["gateway"] = gw.group(1) if gw else None
-    data["interface"] = gw.group(2) if gw else None
+def _check_gateway(data, findings):
+    """Gateway, DNS do computador e ARP spoofing (MAC do roteador respondendo por outro IP)."""
+    gw = re.search(r"default via (\S+) dev (\S+)", _run("ip", "route", "show", "default"))
+    data["gateway"], data["interface"] = (gw.group(1), gw.group(2)) if gw else (None, None)
     try:
         with open("/etc/resolv.conf", encoding="utf-8") as f:
             data["dns_servers"] = re.findall(r"^nameserver\s+(\S+)", f.read(), re.M)
     except OSError:
         data["dns_servers"] = []
 
-    # ARP spoofing: o MAC do gateway aparece também para outro IP da rede
-    neigh = parse_ip_neigh(subprocess.run(["ip", "neigh"], capture_output=True, text=True).stdout)
-    if gw and gw.group(1) in neigh:
-        mac = neigh[gw.group(1)]
-        data["gateway_mac"] = mac
-        dupes = [ip for ip, m in neigh.items() if m == mac and ip != gw.group(1) and ":" not in ip]
-        if dupes:
-            findings.append(Finding(
-                "alta", "Possível ARP spoofing na rede",
-                f"O endereço físico (MAC {mac}) do roteador {gw.group(1)} também responde por "
-                f"{', '.join(dupes)}. Um equipamento pode estar se passando pelo roteador para "
-                "interceptar o tráfego de todos na rede.",
-                "Reinicie o roteador e verifique os aparelhos conectados no painel dele. Se persistir, "
-                "não use esta rede para assuntos sensíveis."))
+    neighbors = parse_ip_neigh(_run("ip", "neigh"))
+    gateway = data["gateway"]
+    if gateway not in neighbors:
+        return
+    mac = data["gateway_mac"] = neighbors[gateway]
+    dupes = [ip for ip, m in neighbors.items() if m == mac and ip != gateway and ":" not in ip]
+    if dupes:
+        findings.append(Finding(
+            "alta", "Possível ARP spoofing na rede",
+            f"O endereço físico (MAC {mac}) do roteador {gateway} também responde por {', '.join(dupes)}. "
+            "Um equipamento pode estar se passando pelo roteador para interceptar o tráfego de todos na rede.",
+            "Reinicie o roteador e verifique os aparelhos conectados no painel dele. Se persistir, "
+            "não use esta rede para assuntos sensíveis."))
 
-    # DNS: resolvedor do sistema x DNS-over-HTTPS (canal criptografado, não adulterável pela rede)
-    dns = []
-    doh_ok = True
+
+def _check_dns(ctx, data, findings):
+    """DNS da rede comparado com DNS-over-HTTPS, mais um domínio inexistente (sequestro de NXDOMAIN)."""
+    rows, reference_failed = [], False
     for name in DNS_SITES:
         local = _system_resolve(name)
         try:
-            ref = _doh(name)
+            reference = _doh(name)
         except Exception:
-            ref, doh_ok = None, False
+            reference, reference_failed = None, True
         status = "ok"
         if any(not is_public_ip(ip) for ip in local):
             status = "adulterado"
@@ -118,76 +130,75 @@ def run(ctx):
                 "critica", "DNS da rede aponta para servidor de spyware",
                 f"{name} resolve para {', '.join(local)}, ligado a indicadores de spyware.",
                 "Desconecte desta rede."))
-        elif ref is not None and local and not set(local) & set(ref):
-            status = "diferente"
-        dns.append({"domain": name, "system": local, "doh": ref, "status": status})
+        elif reference is not None and local and not set(local) & set(reference):
+            status = "diferente"   # comum com CDNs; só informativo
+        rows.append({"domain": name, "system": local, "doh": reference, "status": status})
+
     junk = f"desgrampa-{secrets.token_hex(8)}.com"
-    junk_ip = _system_resolve(junk)
-    dns.append({"domain": junk + " (não existe)", "system": junk_ip, "doh": None,
-                "status": "sequestro de NXDOMAIN" if junk_ip else "ok"})
-    if junk_ip:
+    junk_ips = _system_resolve(junk)
+    rows.append({"domain": f"{junk} (não existe)", "system": junk_ips, "doh": None,
+                 "status": "sequestro de NXDOMAIN" if junk_ips else "ok"})
+    if junk_ips:
         findings.append(Finding(
             "media", "DNS da rede responde a domínios inexistentes",
-            f"{junk} (inexistente) foi resolvido para {', '.join(junk_ip)}: a rede manipula respostas DNS.",
+            f"{junk} (inexistente) foi resolvido para {', '.join(junk_ips)}: a rede manipula respostas DNS.",
             "Use DNS criptografado (DNS privado no celular, DoH no computador)."))
-    if not doh_ok:
+    if reference_failed:
         ctx.notes.append("Não foi possível consultar o DNS de referência (DoH) — comparação de DNS parcial")
-    data["dns"] = dns
+    data["dns"] = rows
 
-    # HTTPS: se a rede intercepta, o certificado é recusado ou emitido por um produto de inspeção
-    tls = []
+
+def _check_tls(data, findings):
+    """Se a rede intercepta HTTPS, o certificado é recusado ou emitido por um produto de inspeção."""
+    rows = []
     for host in TLS_SITES:
-        row = {"host": host}
         try:
-            row["issuer"] = _tls(host)
-            row["status"] = "ok"
-            if INTERCEPTORS.search(row["issuer"]):
-                row["status"] = "inspecionado"
-                findings.append(Finding(
-                    "alta", "HTTPS inspecionado na rede",
-                    f"O certificado de {host} foi emitido por “{row['issuer']}”, um produto de "
-                    "inspeção de tráfego — não pela autoridade real do site. Suas conexões nesta rede "
-                    "(ou neste computador) estão sendo abertas e lidas.",
-                    "Normal apenas em rede corporativa com aviso. Em casa, investigue o roteador e o "
-                    "antivírus deste computador."))
+            issuer = _tls_issuer(host)
         except ssl.SSLCertVerificationError as e:
-            row["status"] = "certificado falso"
-            row["issuer"] = getattr(e, "verify_message", str(e))
+            reason = getattr(e, "verify_message", str(e))
+            rows.append({"host": host, "issuer": reason, "status": "certificado falso"})
             findings.append(Finding(
                 "critica", "Interceptação de HTTPS detectada",
-                f"A conexão com {host} apresentou um certificado inválido ({row['issuer']}). Isso é o "
-                "sinal clássico de um ataque “man-in-the-middle” na rede.",
+                f"A conexão com {host} apresentou um certificado inválido ({reason}). Isso é o sinal "
+                "clássico de um ataque “man-in-the-middle” na rede.",
                 "Desconecte desta rede imediatamente e não digite senhas nela."))
+            continue
         except (OSError, ssl.SSLError) as e:
-            row["status"] = "falhou"
-            row["issuer"] = str(e)[:80]
-        tls.append(row)
-    data["tls"] = tls
+            rows.append({"host": host, "issuer": str(e)[:80], "status": "falhou"})
+            continue
+        inspected = bool(INTERCEPTORS.search(issuer))
+        rows.append({"host": host, "issuer": issuer, "status": "inspecionado" if inspected else "ok"})
+        if inspected:
+            findings.append(Finding(
+                "alta", "HTTPS inspecionado na rede",
+                f"O certificado de {host} foi emitido por “{issuer}”, um produto de inspeção de tráfego — não "
+                "pela autoridade real do site. Suas conexões nesta rede (ou neste computador) estão sendo "
+                "abertas e lidas.",
+                "Normal apenas em rede corporativa com aviso. Em casa, investigue o roteador e o "
+                "antivírus deste computador."))
+    data["tls"] = rows
 
-    # Proxy transparente: a mesma página por HTTP (alterável na rede) e por HTTPS (verificado) devem
-    # ser idênticas; e o endpoint generate_204 deve responder 204 sem corpo.
-    def fetch(url):
-        req = urllib.request.Request(url, headers={"User-Agent": "desgrampa", "Cache-Control": "no-cache"})
-        with urllib.request.urlopen(req, timeout=8) as resp:
-            return resp.status, {k.lower(): v for k, v in resp.headers.items()}, resp.read(20000)
 
+def _check_transparent_proxy(data, findings):
+    """A mesma página por HTTP (alterável na rede) e por HTTPS (verificado) deve ser idêntica, e o
+    endpoint generate_204 do Google deve responder 204 sem corpo."""
     http = {}
     try:
-        _, headers, plain = fetch("http://example.com/")
-        _, _, secure = fetch("https://example.com/")
-        via = {k: headers[k] for k in ("via", "x-forwarded-for", "x-bluecoat-via", "x-squid-error",
-                                       "proxy-connection") if k in headers}
-        http = {"proxy_headers": via, "content_ok": b"".join(plain.split()) == b"".join(secure.split())}
+        _, headers, plain = _fetch("http://example.com/")
+        _, _, secure = _fetch("https://example.com/")
+        http["proxy_headers"] = {k: headers[k] for k in PROXY_HEADERS if k in headers}
+        http["content_ok"] = b"".join(plain.split()) == b"".join(secure.split())
     except Exception as e:
-        http = {"error": str(e)[:80]}
+        http["error"] = str(e)[:80]
     try:
-        status, _, body = fetch("http://connectivitycheck.gstatic.com/generate_204")
+        status, _, body = _fetch("http://connectivitycheck.gstatic.com/generate_204")
         http["generate_204"] = status == 204 and not body
     except urllib.error.HTTPError as e:
         http["generate_204"] = e.code == 204
     except Exception:
         http["generate_204"] = None
     data["http"] = http
+
     problems = []
     if http.get("proxy_headers"):
         problems.append("cabeçalhos de proxy (" + ", ".join(f"{k}: {v}" for k, v in http["proxy_headers"].items()) + ")")
@@ -202,12 +213,23 @@ def run(ctx):
             "cativo está passando o tráfego por um intermediário.",
             "Use sempre HTTPS/VPN confiável nesta rede e verifique o roteador."))
 
-    try:
-        with urllib.request.urlopen("https://www.cloudflare.com/cdn-cgi/trace", timeout=8) as resp:
-            trace = dict(line.split("=", 1) for line in resp.read().decode().splitlines() if "=" in line)
-        data["public_ip"] = {"ip": trace.get("ip"), "country": trace.get("loc"), "warp": trace.get("warp")}
-    except Exception:
-        data["public_ip"] = None
 
+def _public_ip():
+    try:
+        with urllib.request.urlopen("https://www.cloudflare.com/cdn-cgi/trace", timeout=TIMEOUT) as resp:
+            trace = dict(line.split("=", 1) for line in resp.read().decode().splitlines() if "=" in line)
+    except Exception:
+        return None
+    return {"ip": trace.get("ip"), "country": trace.get("loc"), "warp": trace.get("warp")}
+
+
+def run(ctx):
+    ctx.progress("Testando a rede local a partir do computador")
+    findings, data = [], {}
+    _check_gateway(data, findings)
+    _check_dns(ctx, data, findings)
+    _check_tls(data, findings)
+    _check_transparent_proxy(data, findings)
+    data["public_ip"] = _public_ip()
     ctx.data["pcnet"] = data
     return findings

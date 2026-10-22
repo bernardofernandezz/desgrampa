@@ -5,13 +5,16 @@ import re
 import shlex
 from datetime import datetime, timedelta
 
-from . import Finding
+from ..util import PACKAGE
+from . import Finding, ioc_category
 from .packages import DISGUISE_WORDS, SUSPICIOUS_WORDS
 
 NAME = "Rastros e histórico"
 CATEGORY = "rastros"
 
-PKG = r"[a-zA-Z][\w]*(?:\.[\w]+)+"
+PKG = PACKAGE
+STORAGE_FOLDERS = ("/sdcard/Android/data", "/sdcard/Android/media", "/sdcard/Android/obb")
+MAX_PACKAGE_DOTS = 6   # nomes com mais pontos que isso são classes/serviços, não pacotes
 IGNORE_PREFIXES = ("android.", "com.android.", "com.google.android.gms", "androidx.", "java.", "kotlin.")
 
 
@@ -63,33 +66,31 @@ def parse_logcat_removals(out):
     return pkgs
 
 
-def run(ctx):
-    findings = []
+def _collect_removed_apps(ctx):
+    """Pacotes citados em históricos e pastas do aparelho que não estão mais instalados.
+    Devolve ({pacote: {fontes}}, eventos de instalação/remoção, texto dos logs para busca de IOCs)."""
     installed = set(ctx.packages)
-    for u in ctx.data.get("contas", {}).get("extra_users", []):
-        installed |= set(u.get("apps", []))
+    for user in ctx.data.get("contas", {}).get("extra_users", []):
+        installed |= set(user.get("apps", []))
     sources = {}
 
     def saw(pkg, source):
-        if pkg in installed or pkg.startswith(IGNORE_PREFIXES) or pkg.count(".") > 6:
-            return
-        sources.setdefault(pkg, set()).add(source)
+        if pkg not in installed and not pkg.startswith(IGNORE_PREFIXES) and pkg.count(".") <= MAX_PACKAGE_DOTS:
+            sources.setdefault(pkg, set()).add(source)
 
     ctx.progress("Lendo histórico de bateria (instalações e remoções)")
     events, ran = parse_battery_history(ctx.try_sh("dumpsys batterystats --history", timeout=180))
-    for e in events:
-        saw(e["package"], "histórico de instalação")
+    for event in events:
+        saw(event["package"], "histórico de instalação")
     for pkg in ran:
         saw(pkg, "histórico de bateria")
 
     usage = ctx.try_sh("dumpsys usagestats", timeout=120)
-    for pkg in set(re.findall(r"\bpackage=(" + PKG + r")", usage)):
+    for pkg in set(re.findall(rf"\bpackage=({PKG})", usage)):
         saw(pkg, "estatísticas de uso")
-
-    for pkg in set(re.findall(r"/data/(?:user/\d+|data)/(" + PKG + r")/databases", ctx.try_sh("dumpsys dbinfo"))):
+    for pkg in set(re.findall(rf"/data/(?:user/\d+|data)/({PKG})/databases", ctx.try_sh("dumpsys dbinfo"))):
         saw(pkg, "bancos de dados abertos")
-
-    for folder in ("/sdcard/Android/data", "/sdcard/Android/media", "/sdcard/Android/obb"):
+    for folder in STORAGE_FOLDERS:
         for name in ctx.try_sh(f"ls -1 {folder} 2>/dev/null").split():
             if re.fullmatch(PKG, name):
                 saw(name, f"pasta {folder}")
@@ -98,68 +99,81 @@ def run(ctx):
     logcat = ctx.try_sh("logcat -d -b all -v time", timeout=120)
     for pkg in parse_logcat_removals(logcat):
         saw(pkg, "logs do sistema")
+    return sources, events, logcat, usage
 
-    removed = []
+
+def _removed_app_findings(ctx, sources):
+    findings, removed = [], []
     for pkg, srcs in sorted(sources.items()):
+        where = ", ".join(sorted(srcs))
         match = ctx.iocs.match_package(pkg)
         removed.append({"package": pkg, "sources": sorted(srcs), "ioc": str(match) if match else None})
         if match:
             findings.append(Finding(
                 "critica", f"Rastro de spyware removido: {match.family}",
-                f"{pkg} não está mais instalado, mas deixou rastros ({', '.join(sorted(srcs))}). Ele "
-                f"consta nos indicadores de {match}. Isso indica que o aparelho foi monitorado, ou que "
-                "o app continua escondido em outro lugar.",
-                "Troque todas as senhas a partir de outro aparelho e guarde as evidências. Considere "
-                "restaurar o aparelho para as configurações de fábrica depois de salvar o relatório.",
-                package=pkg, category="mercenario" if match.mercenary else "rastros", family=match.family))
+                f"{pkg} não está mais instalado, mas deixou rastros ({where}). Ele consta nos indicadores de "
+                f"{match}. Isso indica que o aparelho foi monitorado, ou que o app continua escondido em outro lugar.",
+                "Troque todas as senhas a partir de outro aparelho e guarde as evidências. Considere restaurar o "
+                "aparelho para as configurações de fábrica depois de salvar o relatório.",
+                package=pkg, category=ioc_category(match, default="rastros"), family=match.family))
         elif SUSPICIOUS_WORDS.search(pkg) or DISGUISE_WORDS.search(pkg):
             findings.append(Finding(
                 "media", "Rastro de app suspeito removido",
-                f"{pkg} já esteve no aparelho ({', '.join(sorted(srcs))}) e tem nome associado a "
-                "monitoramento ou disfarce.",
+                f"{pkg} já esteve no aparelho ({where}) e tem nome associado a monitoramento ou disfarce.",
                 "Lembre se você instalou esse app. Se não, considere que o aparelho foi monitorado.",
                 package=pkg))
     if removed:
         findings.append(Finding(
             "info", "Apps que já estiveram no aparelho",
             f"{len(removed)} app(s) deixaram rastros mas não estão instalados (lista completa no painel "
-            "“Rastros”). Revise se reconhece todos.", ""))
+            "“Rastros”). Revise se reconhece todos."))
+    return findings, removed
 
-    files = []
+
+def _known_spyware_files(ctx):
+    """Caminhos e nomes de arquivo das bases de indicadores que existem no aparelho."""
+    findings, found_paths = [], []
     paths = [p for p in ctx.iocs.file_paths if p.startswith(("/data/", "/sdcard/", "/storage/", "/system/", "/vendor/"))]
     if paths:
         # os caminhos vêm das bases baixadas da internet: sempre escapados antes de ir ao shell
-        found = ctx.try_sh("ls -d " + " ".join(shlex.quote(p.rstrip("/")) for p in paths) + " 2>/dev/null").split()
-        for path in found:
-            m = ctx.iocs.file_paths.get(path) or ctx.iocs.file_paths.get(path + "/")
-            if m:
-                files.append(path)
+        listing = ctx.try_sh("ls -d " + " ".join(shlex.quote(p.rstrip("/")) for p in paths) + " 2>/dev/null")
+        for path in listing.split():
+            match = ctx.iocs.file_paths.get(path) or ctx.iocs.file_paths.get(path + "/")
+            if match:
+                found_paths.append(path)
                 findings.append(Finding(
-                    "critica", f"Arquivo de spyware encontrado: {m.family}",
-                    f"O caminho {path} existe no aparelho e é indicador de {m}.",
+                    "critica", f"Arquivo de spyware encontrado: {match.family}",
+                    f"O caminho {path} existe no aparelho e é indicador de {match}.",
                     "Não apague nada. Salve as evidências e procure análise forense especializada.",
-                    category="mercenario" if m.mercenary else "spyware"))
-    names = set(ctx.iocs.file_names)
-    if names:
+                    category=ioc_category(match)))
+    if ctx.iocs.file_names:
         listing = ctx.try_sh("ls -1a /data/local/tmp /sdcard /sdcard/Download 2>/dev/null")
-        for name in set(listing.split()) & names:
-            m = ctx.iocs.file_names[name]
+        for name in set(listing.split()) & set(ctx.iocs.file_names):
+            match = ctx.iocs.file_names[name]
             findings.append(Finding(
-                "critica", f"Arquivo com nome de spyware: {m.family}",
-                f"Um arquivo chamado {name} foi encontrado e é indicador de {m}.",
+                "critica", f"Arquivo com nome de spyware: {match.family}",
+                f"Um arquivo chamado {name} foi encontrado e é indicador de {match}.",
                 "Salve as evidências e procure análise forense especializada.",
-                category="mercenario" if m.mercenary else "spyware"))
+                category=ioc_category(match)))
+    return findings, found_paths
 
-    text = logcat + "\n" + usage
+
+def _spyware_servers_in_logs(ctx, text):
     hits = {**ctx.iocs.domains_in_text(text), **ctx.iocs.ips_in_text(text)}
-    for host, m in sorted(hits.items()):
-        findings.append(Finding(
-            "critica", f"Contato com servidor de spyware nos logs: {m.family}",
-            f"Os logs do sistema mencionam {host}, endereço usado por {m}.",
-            "Guarde as evidências (pasta do relatório) e procure análise especializada.",
-            category="mercenario" if m.mercenary else "spyware"))
+    findings = [Finding(
+        "critica", f"Contato com servidor de spyware nos logs: {match.family}",
+        f"Os logs do sistema mencionam {host}, endereço usado por {match}.",
+        "Guarde as evidências (pasta do relatório) e procure análise especializada.",
+        category=ioc_category(match)) for host, match in sorted(hits.items())]
+    return findings, hits
 
+
+def run(ctx):
+    sources, events, logcat, usage = _collect_removed_apps(ctx)
+    removed_findings, removed = _removed_app_findings(ctx, sources)
+    file_findings, files = _known_spyware_files(ctx)
+    log_findings, hits = _spyware_servers_in_logs(ctx, logcat + "\n" + usage)
     ctx.data["rastros"] = {"install_events": events[-200:], "removed": removed, "ioc_files": files,
-                           "log_hits": {h: str(m) for h, m in hits.items()},
+                           "log_hits": {host: str(match) for host, match in hits.items()},
                            "logcat_lines": logcat.count("\n")}
-    return findings
+    return removed_findings + file_findings + log_findings

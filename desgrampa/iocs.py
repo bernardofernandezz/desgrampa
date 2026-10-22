@@ -246,8 +246,8 @@ def download(data_dir=None):
     data_dir = Path(data_dir or DATA_DIR)
     data_dir.mkdir(parents=True, exist_ok=True)
     yaml_dest, stix_dest = data_dir / ECHAP_FILE, data_dir / STIX_DIR
-    with tempfile.TemporaryDirectory(dir=data_dir) as tmp:
-        tmp = Path(tmp)
+    with tempfile.TemporaryDirectory(dir=data_dir) as tmp_name:
+        tmp = Path(tmp_name)
         (tmp / ECHAP_FILE).write_bytes(_fetch(ECHAP_URL))
         _read_echap(tmp / ECHAP_FILE)
 

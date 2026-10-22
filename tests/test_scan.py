@@ -226,6 +226,12 @@ class ScanTests(unittest.TestCase):
         self.assertIn(shlex.quote(evil), ls)
         self.assertNotIn("x'; reboot", ls.replace(shlex.quote(evil), ""))
 
+    def test_root_detected_by_mount_source(self):
+        mounts = "magisk /system/bin tmpfs rw,relatime 0 0\n/dev/block/dm-0 /system ext4 ro 0 0\n"
+        r = scan(FakeDevice(extra={"cat /proc/mounts": mounts}))
+        root = next(f for f in r["findings"] if f["title"] == "Sinais de root no aparelho")
+        self.assertIn("montagem /system/bin", root["detail"])
+
     def test_read_only_commands(self):
         dev = FakeDevice(infected=True)
         scan(dev, mode="completa")

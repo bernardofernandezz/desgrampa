@@ -13,89 +13,84 @@ from . import (
     Finding,
     app_label,
 )
+from .netactivity import BG_UPLOAD_ALERT
 
 NAME = "Perfil de risco dos aplicativos"
 CATEGORY = "apps"
 
+HIGH_SCORE, MEDIUM_SCORE, LOW_SCORE = 12, 8, 5   # limites para alta / média / baixa (baixa só na completa)
+RECENT_INSTALL_DAYS = 30
 
-def _recent(ts, days=30):
+
+def _installed_recently(timestamp):
     try:
-        return datetime.fromisoformat(ts[:19]) >= datetime.now() - timedelta(days=days)
+        installed = datetime.fromisoformat(timestamp[:19])
     except (TypeError, ValueError):
         return False
+    return installed >= datetime.now() - timedelta(days=RECENT_INSTALL_DAYS)
+
+
+def _background_upload(ctx, pkg):
+    rows = ctx.data.get("rede", {}).get("data_usage", [])
+    return next((r["bg_tx"] for r in rows if r["package"] == pkg), 0)
 
 
 def score_app(ctx, app):
-    reasons = []
+    """Soma os sinais de risco do app. Devolve (pontuação, motivos positivos)."""
+    policy = ctx.device_policy
+    privileged = [desc for perm, desc in PRIVILEGED_PERMISSIONS.items() if perm in app.granted]
+    upload = _background_upload(ctx, app.name)
 
-    def add(points, text):
-        reasons.append((points, text))
+    # (o sinal está presente?, pontos, descrição)
+    signals = [
+        (ctx.iocs.match_package(app.name), 20, "consta na base de stalkerware"),
+        (app.name in ctx.accessibility_packages, 4, "serviço de acessibilidade ativo"),
+        (app.name in ctx.listener_packages, 3, "lê notificações"),
+        (app.name in policy["admins"], 3, "administrador do dispositivo"),
+        (app.name == policy["device_owner"], 5, "controla o aparelho (Device Owner)"),
+        *((perm in app.granted, pts, desc) for perm, (pts, desc) in RISKY_PERMISSIONS.items()),
+        *((op in app.appops, pts, desc) for op, (pts, desc) in RISKY_APPOPS.items()),
+        (privileged, 4, "permissão privilegiada: " + ", ".join(privileged[:3])),
+        (upload >= BG_UPLOAD_ALERT, 2, f"enviou {upload // 1024 // 1024} MB em segundo plano"),
+        ("android.permission.RECEIVE_BOOT_COMPLETED" in app.requested, 1, "inicia junto com o aparelho"),
+        (app.battery_whitelisted, 1, "isento da economia de bateria"),
+        (app.has_launcher is False, 3, "sem ícone na tela de apps"),
+        (app.sideloaded, 2, "instalado fora da loja oficial"),
+        (_installed_recently(app.first_install), 1, f"instalado nos últimos {RECENT_INSTALL_DAYS} dias"),
+        (app.name in ctx.sensor_usage, 1, "usou sensores recentemente"),
+        (app.name in KNOWN_BENIGN, -4, "app popular conhecido"),
+    ]
+    present = [(points, desc) for active, points, desc in signals if active]
+    return sum(points for points, _ in present), [desc for points, desc in present if points > 0]
 
-    if ctx.iocs.match_package(app.name):
-        add(20, "consta na base de stalkerware")
-    a11y = {p for p, _ in ctx.accessibility}
-    nls = {p for p, _ in ctx.notification_listeners}
-    dp = ctx.device_policy
-    if app.name in a11y:
-        add(4, "serviço de acessibilidade ativo")
-    if app.name in nls:
-        add(3, "lê notificações")
-    if app.name in dp["admins"]:
-        add(3, "administrador do dispositivo")
-    if app.name == dp["device_owner"]:
-        add(5, "controla o aparelho (Device Owner)")
-    for perm, (pts, text) in RISKY_PERMISSIONS.items():
-        if perm in app.granted:
-            add(pts, text)
-    for op, (pts, text) in RISKY_APPOPS.items():
-        if op in app.appops:
-            add(pts, text)
-    privileged = [d for p, d in PRIVILEGED_PERMISSIONS.items() if p in app.granted]
-    if privileged:
-        add(4, "permissão privilegiada: " + ", ".join(privileged[:3]))
-    bg = next((r for r in ctx.data.get("rede", {}).get("data_usage", []) if r["package"] == app.name), None)
-    if bg and bg["bg_tx"] >= 100 * 1024 * 1024:
-        add(2, f"enviou {bg['bg_tx'] // 1024 // 1024} MB em segundo plano")
-    if "android.permission.RECEIVE_BOOT_COMPLETED" in app.requested:
-        add(1, "inicia junto com o aparelho")
-    if app.battery_whitelisted:
-        add(1, "isento da economia de bateria")
-    if app.has_launcher is False:
-        add(3, "sem ícone na tela de apps")
-    if app.sideloaded:
-        add(2, "instalado fora da loja oficial")
-    if _recent(app.first_install):
-        add(1, "instalado nos últimos 30 dias")
-    if app.name in ctx._cache.get("activity", {}):
-        add(1, "usou sensores recentemente")
-    if app.name in KNOWN_BENIGN:
-        add(-4, "app popular conhecido")
-    return sum(p for p, _ in reasons), [t for p, t in reasons if p > 0]
+
+def _severity(ctx, score):
+    if score >= HIGH_SCORE:
+        return "alta"
+    if score >= MEDIUM_SCORE:
+        return "media"
+    if score >= LOW_SCORE and ctx.full:
+        return "baixa"
+    return None
 
 
 def run(ctx):
     findings = []
-    rows = []
     for app in ctx.third_party():
         score, reasons = score_app(ctx, app)
-        apk = ctx._cache.get("apk_info", {}).get(app.name, {})
-        rows.append({
+        apk = ctx.apk_info.get(app.name, {})
+        ctx.app_rows.append({
             "package": app.name, "score": score, "reasons": reasons,
             "installer": app.installer, "sideloaded": app.sideloaded,
             "has_launcher": app.has_launcher, "first_install": app.first_install,
             "sha256": apk.get("sha256"), "certificates": apk.get("certificates", []),
         })
-        if ctx.iocs.match_package(app.name):
-            continue  # já reportado como crítico
-        severity = "alta" if score >= 12 else "media" if score >= 8 else \
-            "baixa" if score >= 5 and ctx.full else None
-        if severity:
+        severity = _severity(ctx, score)
+        if severity and not ctx.iocs.match_package(app.name):   # stalkerware conhecido já foi reportado
             findings.append(Finding(
                 severity, "App com combinação perigosa de acessos",
                 f"{app_label(ctx, app.name)} — pontuação {score}: " + ", ".join(reasons) + ".",
-                "Confirme se você reconhece e usa este app. Se não, revogue as permissões e "
-                "desinstale.",
+                "Confirme se você reconhece e usa este app. Se não, revogue as permissões e desinstale.",
                 package=app.name))
-    rows.sort(key=lambda r: -r["score"])
-    ctx._cache["app_rows"] = rows
+    ctx.app_rows.sort(key=lambda r: -r["score"])
     return findings

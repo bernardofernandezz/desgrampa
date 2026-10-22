@@ -7,7 +7,7 @@ import urllib.request
 from pathlib import Path
 from unittest import mock
 
-from desgrampa import actions, grouping, server
+from desgrampa import actions, evidence, grouping, server
 
 from .fake_device import FakeDevice
 from .test_scan import IOCS, scan
@@ -130,16 +130,14 @@ class ActionApiTests(unittest.TestCase):
         (reports / "rel_FAKE123").mkdir()
         (reports / "rel_FAKE123" / "relatorio.json").write_text(json.dumps(r, ensure_ascii=False))
         self.phone = PhoneWithApps({"com.systemservice", "com.vodaservices"})
-        self.patches = [mock.patch.object(server, "REPORTS_DIR", reports),
+        self.patches = [mock.patch.object(evidence, "REPORTS_DIR", reports),
                         mock.patch.object(server.adb, "list_devices", return_value=[{"serial": "FAKE123", "state": "device"}]),
                         mock.patch.object(server.adb, "Device", return_value=self.phone),
                         mock.patch.object(server.iocs, "load", return_value=IOCS)]
         for p in self.patches:
             p.start()
-        self.httpd = server.serve(0)
-        port = self.httpd.server_address[1]
-        self.httpd.RequestHandlerClass = server.make_handler(server.State(), port)
-        self.base = f"http://127.0.0.1:{port}"
+        self.httpd = server.Server(0)   # porta livre escolhida pelo sistema
+        self.base = f"http://127.0.0.1:{self.httpd.server_address[1]}"
         threading.Thread(target=self.httpd.serve_forever, daemon=True).start()
 
     def tearDown(self):

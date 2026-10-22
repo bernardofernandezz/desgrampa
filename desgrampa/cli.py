@@ -6,6 +6,7 @@
 """
 
 import argparse
+import logging
 import sys
 import webbrowser
 
@@ -51,6 +52,7 @@ def main(argv=None):
     parser.add_argument("--no-browser", action="store_true", help="não abrir o navegador")
     parser.add_argument("comando", nargs="?", choices=["painel", "atualizar-bases"], default="painel")
     args = parser.parse_args(argv)
+    logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(name)s: %(message)s")
     if args.comando == "atualizar-bases":
         return update_bases()
     return serve(args.port, not args.no_browser)

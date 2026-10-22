@@ -7,6 +7,9 @@ import { refreshStatus, setReady } from "./device.js";
 import { loadReports } from "./reports.js";
 import { renderDashboard } from "./dashboard.js";
 
+const POLL_MS = 800;          // enquanto a varredura roda
+const POLL_RETRY_MS = 2000;   // depois de uma falha de rede
+
 export async function startScan() {
   const mode = document.querySelector("input[name=mode]:checked").value;
   try {
@@ -17,6 +20,7 @@ export async function startScan() {
   }
 }
 
+// Ao abrir a página com uma varredura já em andamento, volta a acompanhá-la.
 export function resumeRunning() {
   const run = (app.status.running || [])[0];
   if (run && !app.polling && route().page === "varredura") go(`#varredura/scan/${run.id}`);
@@ -33,56 +37,66 @@ export function showScan(id) {
   poll(id);
 }
 
-function setProgress(frac, step) {
-  const pct = `${Math.round(frac * 100)}%`;
+function setProgress(fraction, step) {
+  const pct = `${Math.round(fraction * 100)}%`;
   $("#bar-fill").style.width = pct;
   $("#pct").textContent = pct;
   $("#step").textContent = step;
 }
 
-async function poll(id) {
-  if (app.polling !== id) return;
-  try {
-    const job = await api(`/api/scan/${id}`);
-    setProgress(job.progress, job.step);
-    if (job.state === "running") return setTimeout(() => poll(id), 800);
-    app.scanning = false;
-    $("#progress").classList.add("hidden");
-    if (job.state === "error") return showError(job.error);
-    const r = job.result;
-    const name = r.evidence_dir ? r.evidence_dir.split("/").pop() : null;
-    const box = $("#result");
-    box.classList.remove("hidden");
-    if (name) await showReport(box, name);
-    else renderDashboard(box, r, { html: `/api/scan/${id}/report.html`, json: `/api/scan/${id}/report.json` });
-    box.scrollIntoView({ behavior: "smooth" });
-    loadReports();
-    refreshStatus();
-  } catch (e) {
-    if (/não encontrada/.test(e.message)) {   // servidor reiniciado: a varredura em memória sumiu
-      app.polling = null;
-      app.scanning = false;
-      $("#progress").classList.add("hidden");
-      return go("#varredura");
-    }
-    setTimeout(() => poll(id), 2000);
-  }
+function stopTracking() {
+  app.polling = null;
+  app.scanning = false;
+  $("#progress").classList.add("hidden");
 }
 
-function showError(msg) {
-  app.scanning = false;
-  app.polling = null;
+async function poll(id) {
+  if (app.polling !== id) return;
+  let job;
+  try {
+    job = await api(`/api/scan/${id}`);
+  } catch (e) {
+    if (e.status === 404) {   // servidor reiniciado: a varredura em memória não existe mais
+      stopTracking();
+      go("#varredura");
+    } else {
+      setTimeout(() => poll(id), POLL_RETRY_MS);
+    }
+    return;
+  }
+
+  setProgress(job.progress, job.step);
+  if (job.state === "running") {
+    setTimeout(() => poll(id), POLL_MS);
+    return;
+  }
+  stopTracking();
+  if (job.state === "error") {
+    showError(job.error);
+    return;
+  }
+  const box = $("#result");
+  box.classList.remove("hidden");
+  await showReport(box, job.result.report_name);
+  box.scrollIntoView({ behavior: "smooth" });
+  loadReports();
+  refreshStatus();
+}
+
+function showError(message) {
+  stopTracking();
   const box = $("#result");
   box.classList.remove("hidden");
   fill(box, el("div", { class: "verdict suspeito", style: "margin-bottom:18px" },
-    el("h2", {}, "A varredura não foi concluída"), el("p", {}, msg),
+    el("h2", {}, "A varredura não foi concluída"), el("p", {}, message),
     el("p", { class: "muted" }, "Verifique se o aparelho continua conectado e autorizado, e tente novamente.")));
   setReady();
 }
 
+// Mostra um relatório salvo no elemento `box`; após uma remoção/desativação ele se recarrega.
 export async function showReport(box, name) {
-  const r = await api(reportLinks(name).json);
-  renderDashboard(box, r, reportLinks(name), () => showReport(box, name));
+  const report = await api(reportLinks(name).json);
+  renderDashboard(box, report, reportLinks(name), () => showReport(box, name));
 }
 
 export function reportLinks(name) {

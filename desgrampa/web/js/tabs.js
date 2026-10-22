@@ -22,7 +22,7 @@ export function networkTab(data) {
     ]),
     el("h3", {}, "Conexões de rede ativas no celular"),
     table(["Interface", "DNS", "Gateway", "Proxy"],
-      links.map((l) => [l.iface, l.dns.join(", "), l.gateways.join(", "), l.proxy ? tag(l.proxy, "bad") : "—"])),
+      links.map((link) => [link.iface, link.dns.join(", "), link.gateways.join(", "), link.proxy ? tag(link.proxy, "bad") : "—"])),
     el("h3", {}, "Servidores DNS em uso"),
     table(["Interface", "Servidor", "Tipo"], (rede.dns_servers || []).map((x) => [x.iface, x.ip, x.kind])),
     el("h3", {}, "Teste de DNS feito pelo celular"),

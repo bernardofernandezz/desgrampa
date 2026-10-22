@@ -2,6 +2,7 @@
 
 import re
 
+from ..util import is_package_name
 from . import Finding, app_label
 
 NAME = "Telefonia e SIM"
@@ -24,7 +25,7 @@ ROLES = {
 
 def role_holders(ctx, role):
     out = ctx.try_sh(f"cmd role get-role-holders --user 0 {role}")
-    return [line.strip() for line in out.splitlines() if re.fullmatch(r"[a-zA-Z]\w*(\.\w+)+", line.strip())]
+    return [line.strip() for line in out.splitlines() if is_package_name(line.strip())]
 
 
 def run(ctx):

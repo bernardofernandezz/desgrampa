@@ -25,7 +25,6 @@ def _ago(seconds):
 
 def run(ctx):
     findings = []
-    usage_by_app = ctx._cache.setdefault("activity", {})
     apps = sorted(ctx.third_party(), key=lambda p: p.name)
     for i, app in enumerate(apps, 1):
         ctx.progress(f"Verificando uso de sensores {i}/{len(apps)}: {app.name}")
@@ -33,7 +32,7 @@ def run(ctx):
         recent = {op: u for op, u in usage.items() if op in WATCHED and u["ago"] <= WINDOW}
         if not recent:
             continue
-        usage_by_app[app.name] = recent
+        ctx.sensor_usage[app.name] = recent
         background = [op for op, u in recent.items() if u["background"]]
         suspicious = app.sideloaded or app.has_launcher is False
         parts = [f"{WATCHED[op]} há {_ago(u['ago'])}" + (" (em segundo plano)" if u["background"] else "")

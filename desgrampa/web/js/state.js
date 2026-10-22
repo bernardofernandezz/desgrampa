@@ -15,6 +15,12 @@ export const SEV_PLURAL = { critica: ["crítico", "críticos"], alta: ["alto", "
 
 export const API_VERSION = 3;
 
+export const INSTALL_HINTS = {
+  adb: "instale o adb: sudo apt install adb · sudo pacman -S android-tools · brew install android-platform-tools",
+  mvt: 'pip install "desgrampa[forense]"',
+  restart: "desgrampa",
+};
+
 export const app = {
   status: null,
   serial: null,          // aparelho escolhido

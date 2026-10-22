@@ -1,9 +1,22 @@
 // Status do servidor e do aparelho: seletor, cartão do aparelho e página de dispositivos.
 
 import { $, api, el, fill, fmtDate, icon, num } from "./dom.js";
-import { API_VERSION, app } from "./state.js";
+import { API_VERSION, app, INSTALL_HINTS } from "./state.js";
 import { go } from "./router.js";
 import { resumeRunning } from "./scan.js";
+
+const INFO_TTL_MS = 20000;        // relê os dados do aparelho a cada 20 s
+const INFO_RETRY_MS = 5000;       // depois de uma falha, tenta de novo em 5 s
+const OLD_PATCH_MONTHS = 6;       // patch mais antigo que isso aparece em destaque
+const LOW_BATTERY = 20;
+
+const REGION_PT = { Brazil: "Brasil", Portugal: "Portugal", USA: "Estados Unidos", Mexico: "México",
+  Argentina: "Argentina", Spain: "Espanha", Germany: "Alemanha", France: "França", "United Kingdom": "Reino Unido" };
+const VERIFIED_BOOT = { green: "íntegro (verde)", yellow: "chave própria (amarelo)", orange: "desbloqueado (laranja)",
+  red: "falhou (vermelho)" };
+const ENCRYPTION = { file: "por arquivo (FBE)", block: "disco inteiro (FDE)", encrypted: "ativa" };
+
+// ------------------------------------------------------------ status
 
 export async function refreshStatus() {
   try {
@@ -25,34 +38,44 @@ export async function refreshStatus() {
   resumeRunning();
 }
 
-function readyDevices() {
-  return (app.status?.devices || []).filter((d) => d.state === "device");
+function currentDevice() {
+  return (app.status?.devices || []).find((d) => d.serial === app.serial);
 }
 
 function pickDevice() {
+  if (currentDevice()) return;
   const devices = app.status.devices || [];
-  if (!devices.find((d) => d.serial === app.serial)) {
-    app.serial = (readyDevices()[0] || devices[0])?.serial ?? null;
-  }
+  app.serial = (devices.find((d) => d.state === "device") || devices[0])?.serial ?? null;
+}
+
+function serverOutdated() {
+  return app.status && app.status.api !== API_VERSION;
 }
 
 async function loadDeviceInfo() {
-  const dev = (app.status.devices || []).find((d) => d.serial === app.serial);
+  const dev = currentDevice();
   if (!dev || dev.state !== "device" || app.scanning || serverOutdated()) return;
-  if (app.infoAt[dev.serial] && Date.now() - app.infoAt[dev.serial] < 20000) return;
+  if (Date.now() - (app.infoAt[dev.serial] || 0) < INFO_TTL_MS) return;
   try {
     app.info[dev.serial] = await api(`/api/device/${encodeURIComponent(dev.serial)}`);
     app.infoAt[dev.serial] = Date.now();
     delete app.infoError[dev.serial];
   } catch (e) {
     app.infoError[dev.serial] = e.message;
-    app.infoAt[dev.serial] = Date.now() - 15000;   // tenta de novo em ~5 s
+    app.infoAt[dev.serial] = Date.now() - INFO_TTL_MS + INFO_RETRY_MS;
   }
 }
 
 function deviceName(d) {
   return app.info[d.serial]?.name || d.model || d.serial;
 }
+
+export function setReady() {
+  const dev = currentDevice();
+  $("#start").disabled = !dev || dev.state !== "device" || app.scanning;
+}
+
+// ------------------------------------------------------------ barra lateral, seletor e avisos
 
 export function renderSystem() {
   $("#sys-status").classList.toggle("off", !app.status);
@@ -63,141 +86,73 @@ export function renderSystem() {
 function renderPicker() {
   const sel = $("#device-picker");
   const devices = app.status.devices || [];
-  const sig = JSON.stringify([app.serial, app.scanning, devices.map((d) => [d.serial, d.state, deviceName(d)])]);
-  if (sel.dataset.sig === sig) return;   // não redesenha (e não fecha) o seletor à toa
-  sel.dataset.sig = sig;
-  fill(sel, ...(devices.length
+  const signature = JSON.stringify([app.serial, app.scanning, devices.map((d) => [d.serial, d.state, deviceName(d)])]);
+  if (sel.dataset.sig === signature) return;   // não redesenha (e não fecha) o seletor à toa
+  sel.dataset.sig = signature;
+  fill(sel, devices.length
     ? devices.map((d) => el("option", { value: d.serial, selected: d.serial === app.serial },
       deviceName(d) + (d.state === "device" ? "" : " (não autorizado)")))
-    : [el("option", { value: "" }, "Nenhum aparelho")]));
+    : el("option", { value: "" }, "Nenhum aparelho"));
   sel.disabled = !devices.length || app.scanning;
 }
 
-function serverOutdated() {
-  return app.status && app.status.api !== API_VERSION;
+// Aviso no topo da página; `text` null remove o aviso.
+function setBanner(id, title, text) {
+  let banner = document.getElementById(id);
+  if (!text) { banner?.remove(); return; }
+  if (!banner) {
+    banner = el("div", { id, class: "card warn-card" });
+    $(".main .topbar").after(banner);
+  }
+  fill(banner, el("strong", {}, title), el("p", { class: "muted" }, text));
 }
 
 function renderIocsBanner() {
   const job = app.status?.iocs?.job;
-  let banner = $("#iocs-banner");
-  if (!job || job.state === "ok") { banner?.remove(); return; }
   const text = {
     baixando: "Baixando as bases de indicadores de spyware (primeira execução)… a varredura pode começar depois disso.",
-    erro: `Não foi possível baixar as bases de indicadores: ${job.error}. Verifique a internet e tente em Configurações.`,
+    erro: `Não foi possível baixar as bases de indicadores: ${job?.error}. Verifique a internet e tente em Configurações.`,
     ausente: "As bases de indicadores ainda não foram baixadas. Abra Configurações › Atualizar bases.",
-  }[job.state];
-  if (!banner) {
-    banner = el("div", { id: "iocs-banner", class: "card warn-card" });
-    $(".main .topbar").after(banner);
-  }
-  fill(banner, el("strong", {}, "Bases de indicadores"), el("p", { class: "muted" }, text));
+  }[job?.state];
+  setBanner("iocs-banner", "Bases de indicadores", text);
 }
 
 function renderOutdatedBanner() {
-  let banner = $("#outdated");
-  if (!serverOutdated()) { banner?.remove(); return; }
-  if (banner) return;
-  banner = el("div", { id: "outdated", class: "card warn-card" },
-    el("strong", {}, "O servidor em execução é de uma versão anterior da interface."),
-    el("p", { class: "muted" }, "Por isso os dados do aparelho não aparecem. No terminal onde o app está rodando, aperte ",
-      el("code", {}, "Ctrl+C"), " e inicie de novo com ", el("code", {}, ".venv/bin/python app.py"), ". Depois recarregue esta página."));
-  $(".main .topbar").after(banner);
+  setBanner("outdated", "O servidor em execução é de uma versão anterior da interface.", serverOutdated()
+    ? `Por isso os dados do aparelho não aparecem. No terminal onde o app está rodando, aperte Ctrl+C, inicie de novo `
+      + `com “${INSTALL_HINTS.restart}” e recarregue esta página.`
+    : null);
 }
 
-const REGION_PT = { Brazil: "Brasil", Portugal: "Portugal", USA: "Estados Unidos", Mexico: "México",
-  Argentina: "Argentina", Spain: "Espanha", Germany: "Alemanha", France: "França", "United Kingdom": "Reino Unido" };
-
-const VB_LABEL = { green: "íntegro (verde)", yellow: "chave própria (amarelo)", orange: "desbloqueado (laranja)", red: "falhou (vermelho)" };
-
-function patchAge(patch) {
-  const d = new Date(`${patch}T00:00:00`);
-  if (Number.isNaN(d.getTime())) return null;
-  const months = Math.floor((Date.now() - d.getTime()) / (30.44 * 86400000));
-  return months <= 0 ? "atual" : months === 1 ? "há 1 mês" : `há ${months} meses`;
+function renderMvtLine() {
+  const mvt = app.status.mvt;
+  $("#mvt-status").textContent = mvt.installed
+    ? `MVT ${mvt.version || ""} instalado — será usado na varredura completa.`
+    : `MVT não encontrado: a varredura completa roda sem ele (${INSTALL_HINTS.mvt}).`;
 }
 
-function fmtUptime(s) {
-  if (s == null) return null;
-  const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60);
-  return d ? `${d} d ${h} h` : h ? `${h} h ${m} min` : `${m} min`;
+// ------------------------------------------------------------ cartão do aparelho
+
+function patchAgeMonths(patch) {
+  const date = new Date(`${patch}T00:00:00`);
+  return Number.isNaN(date.getTime()) ? null : Math.floor((Date.now() - date.getTime()) / (30.44 * 86400000));
 }
 
-function renderDeviceCard() {
-  const card = $("#device-card");
-  const st = app.status;
-  const dev = (st.devices || []).find((d) => d.serial === app.serial);
-
-  if (!st.adb || st.error || !dev) {
-    const title = !st.adb ? "Ferramenta adb não instalada" : st.error ? "Erro no adb" : "Nenhum aparelho conectado";
-    fill(card,
-      el("div", { class: "device-head" },
-        el("div", { class: "phone off" }),
-        el("div", { class: "grow device-empty" },
-          el("div", { class: "device-name" }, title),
-          !st.adb ? [el("div", { class: "device-sub" }, "Instale e recarregue a página:"),
-            el("p", {}, el("code", {}, "sudo pacman -S android-tools"))]
-            : st.error ? el("div", { class: "device-sub" }, st.error)
-              : el("ol", {},
-                el("li", {}, "Ative a Depuração USB nas Opções do desenvolvedor."),
-                el("li", {}, "Conecte o cabo de dados ao computador."),
-                el("li", {}, "Toque em “Permitir” no aviso do celular.")),
-          st.adb && !st.error ? el("p", { class: "small" }, el("a", { href: "#dispositivos" }, "Ver instruções completas")) : null),
-        el("span", { class: "pill" }, el("span", { class: "dot" }), "Desconectado")),
-      statsRow([["usb", "USB", "Aguardando", ""], ["shield", "Depuração", "—", ""], ["battery", "Bateria", "—", ""]]),
-    );
-    return;
-  }
-
-  const ready = dev.state === "device";
-  const info = app.info[dev.serial];
-  const error = app.infoError[dev.serial];
-  const bat = info?.battery;
-
-  let sub;
-  if (!ready) sub = "Desbloqueie o celular e toque em “Permitir” no aviso de depuração USB.";
-  else if (serverOutdated()) sub = "Servidor desatualizado — reinicie o app (veja o aviso acima).";
-  else if (error) sub = `Não foi possível ler os dados: ${error}`;
-  else if (!info) sub = "Lendo informações pelo USB…";
-  else sub = [info.android && `Android ${info.android}`, info.rom, info.sdk && `API ${info.sdk}`].filter(Boolean).join(" · ");
-
-  const batteryText = bat ? `${bat.level}%${bat.charging ? " · carregando" : ""}` : "—";
-
-  const details = info ? [
-    ["Patch de segurança", info.security_patch && [info.security_patch, " ",
-      el("span", { class: patchAge(info.security_patch)?.match(/\d+/)?.[0] > 6 ? "warn-text" : "muted" }, `(${patchAge(info.security_patch)})`)]],
-    ["Build", info.build],
-    ["Chip", info.soc],
-    ["Operadora", info.operators?.join(", ")],
-    ["Região", [REGION_PT[info.region] || info.region, info.csc && `CSC ${info.csc}`].filter(Boolean).join(" · ")],
-    ["Armazenamento", info.storage && `${num(info.storage.used_gb)} de ${num(info.storage.total_gb)} GB (${info.storage.used_pct}%)`],
-    ["Memória RAM", info.memory && `${num(info.memory.nominal_gb)} GB`],
-    ["Bootloader", info.bootloader && [info.bootloader.locked === true ? "bloqueado" : info.bootloader.locked === false ? "DESBLOQUEADO" : null,
-      VB_LABEL[info.bootloader.verified_boot]].filter(Boolean).join(" · ")],
-    ["Criptografia", info.encryption && ({ file: "por arquivo (FBE)", block: "disco inteiro (FDE)", encrypted: "ativa" }[info.encryption] || info.encryption)],
-    ["Bateria", bat && [bat.health && `saúde ${bat.health}`, bat.temperature_c != null && `${num(bat.temperature_c)} °C`,
-      bat.power_source && `energia via ${bat.power_source}`].filter(Boolean).join(" · ")],
-    ["Ligado há", fmtUptime(info.uptime_s)],
-    ["Nome no aparelho", info.device_name],
-  ].filter(([, v]) => v != null && v !== "" && !(Array.isArray(v) && !v.length)) : [];
-
-  fill(card,
-    el("div", { class: "device-head" },
-      el("div", { class: "phone" }),
-      el("div", { class: "grow" },
-        el("div", { class: "device-name" }, info?.name || dev.model || "Android"),
-        el("div", { class: `device-sub ${error && !info ? "warn-text" : ""}` }, sub),
-        el("div", { class: "device-serial" }, [dev.serial, info?.codename && `codinome ${info.codename}`, dev.usb && `porta USB ${dev.usb}`]
-          .filter(Boolean).join(" · "))),
-      el("span", { class: `pill ${ready ? "ok" : "warn"}` }, el("span", { class: "dot" }), ready ? "Conectado" : "Não autorizado")),
-    statsRow([
-      ["usb", "USB", "Conectado", "ok"],
-      ["shield", "Depuração", ready ? "Autorizada" : "Toque em “Permitir” no celular", ready ? "" : "warn"],
-      [bat?.charging ? "batteryCharging" : "battery", "Bateria", batteryText, bat && bat.level < 20 && !bat.charging ? "warn" : ""],
-    ]),
-    details.length ? el("dl", { class: "device-details" },
-      details.map(([k, v]) => el("div", {}, el("dt", {}, k), el("dd", {}, v)))) : null,
-  );
+function patchLabel(patch) {
+  const months = patchAgeMonths(patch);
+  if (months == null) return patch;
+  const age = months <= 0 ? "atual" : months === 1 ? "há 1 mês" : `há ${months} meses`;
+  return [patch, " ", el("span", { class: months > OLD_PATCH_MONTHS ? "warn-text" : "muted" }, `(${age})`)];
 }
+
+function fmtUptime(seconds) {
+  if (seconds == null) return null;
+  const d = Math.floor(seconds / 86400), h = Math.floor((seconds % 86400) / 3600), m = Math.floor((seconds % 3600) / 60);
+  if (d) return `${d} d ${h} h`;
+  return h ? `${h} h ${m} min` : `${m} min`;
+}
+
+const joinParts = (...parts) => parts.filter(Boolean).join(" · ");
 
 function statsRow(items) {
   return el("div", { class: "device-stats" }, items.map(([ic, label, value, cls]) =>
@@ -205,34 +160,109 @@ function statsRow(items) {
       el("div", {}, el("div", {}, label), el("div", { class: `v ${cls}` }, value)))));
 }
 
-function renderMvtLine() {
-  const mvt = app.status.mvt;
-  $("#mvt-status").textContent = mvt.installed
-    ? `MVT ${mvt.version || ""} instalado — será usado na varredura completa.`
-    : "MVT não encontrado: a varredura completa roda sem ele (.venv/bin/pip install mvt).";
+function emptyDeviceCard(st) {
+  let title, body;
+  if (!st.adb) {
+    title = "Ferramenta adb não instalada";
+    body = [el("div", { class: "device-sub" }, "Instale e recarregue a página:"), el("p", {}, el("code", {}, INSTALL_HINTS.adb))];
+  } else if (st.error) {
+    title = "Erro no adb";
+    body = el("div", { class: "device-sub" }, st.error);
+  } else {
+    title = "Nenhum aparelho conectado";
+    body = [el("ol", {},
+      el("li", {}, "Ative a Depuração USB nas Opções do desenvolvedor."),
+      el("li", {}, "Conecte o cabo de dados ao computador."),
+      el("li", {}, "Toque em “Permitir” no aviso do celular.")),
+    el("p", { class: "small" }, el("a", { href: "#dispositivos" }, "Ver instruções completas"))];
+  }
+  return [
+    el("div", { class: "device-head" },
+      el("div", { class: "phone off" }),
+      el("div", { class: "grow device-empty" }, el("div", { class: "device-name" }, title), body),
+      el("span", { class: "pill" }, el("span", { class: "dot" }), "Desconectado")),
+    statsRow([["usb", "USB", "Aguardando", ""], ["shield", "Depuração", "—", ""], ["battery", "Bateria", "—", ""]]),
+  ];
 }
 
-export function setReady() {
-  const dev = (app.status?.devices || []).find((d) => d.serial === app.serial);
-  $("#start").disabled = !dev || dev.state !== "device" || app.scanning;
+function deviceSubtitle(ready, info, error) {
+  if (!ready) return "Desbloqueie o celular e toque em “Permitir” no aviso de depuração USB.";
+  if (serverOutdated()) return "Servidor desatualizado — reinicie o app (veja o aviso acima).";
+  if (error) return `Não foi possível ler os dados: ${error}`;
+  if (!info) return "Lendo informações pelo USB…";
+  return joinParts(info.android && `Android ${info.android}`, info.rom, info.sdk && `API ${info.sdk}`);
 }
+
+function deviceDetails(info) {
+  const bat = info.battery;
+  const boot = info.bootloader;
+  const locked = boot?.locked === true ? "bloqueado" : boot?.locked === false ? "DESBLOQUEADO" : null;
+  const rows = [
+    ["Patch de segurança", info.security_patch && patchLabel(info.security_patch)],
+    ["Build", info.build],
+    ["Chip", info.soc],
+    ["Operadora", info.operators?.join(", ")],
+    ["Região", joinParts(REGION_PT[info.region] || info.region, info.csc && `CSC ${info.csc}`)],
+    ["Armazenamento", info.storage && `${num(info.storage.used_gb)} de ${num(info.storage.total_gb)} GB (${info.storage.used_pct}%)`],
+    ["Memória RAM", info.memory && `${num(info.memory.nominal_gb)} GB`],
+    ["Bootloader", boot && joinParts(locked, VERIFIED_BOOT[boot.verified_boot])],
+    ["Criptografia", info.encryption && (ENCRYPTION[info.encryption] || info.encryption)],
+    ["Bateria", bat && joinParts(bat.health && `saúde ${bat.health}`, bat.temperature_c != null && `${num(bat.temperature_c)} °C`,
+      bat.power_source && `energia via ${bat.power_source}`)],
+    ["Ligado há", fmtUptime(info.uptime_s)],
+    ["Nome no aparelho", info.device_name],
+  ].filter(([, value]) => value);
+  return rows.length ? el("dl", { class: "device-details" }, rows.map(([k, v]) => el("div", {}, el("dt", {}, k), el("dd", {}, v)))) : null;
+}
+
+function renderDeviceCard() {
+  const card = $("#device-card");
+  const dev = currentDevice();
+  if (!app.status.adb || app.status.error || !dev) {
+    fill(card, emptyDeviceCard(app.status));
+    return;
+  }
+  const ready = dev.state === "device";
+  const info = app.info[dev.serial];
+  const error = app.infoError[dev.serial];
+  const bat = info?.battery;
+  fill(card,
+    el("div", { class: "device-head" },
+      el("div", { class: "phone" }),
+      el("div", { class: "grow" },
+        el("div", { class: "device-name" }, info?.name || dev.model || "Android"),
+        el("div", { class: `device-sub ${error && !info ? "warn-text" : ""}` }, deviceSubtitle(ready, info, error)),
+        el("div", { class: "device-serial" }, joinParts(dev.serial, info?.codename && `codinome ${info.codename}`,
+          dev.usb && `porta USB ${dev.usb}`))),
+      el("span", { class: `pill ${ready ? "ok" : "warn"}` }, el("span", { class: "dot" }), ready ? "Conectado" : "Não autorizado")),
+    statsRow([
+      ["usb", "USB", "Conectado", "ok"],
+      ["shield", "Depuração", ready ? "Autorizada" : "Toque em “Permitir” no celular", ready ? "" : "warn"],
+      [bat?.charging ? "batteryCharging" : "battery", "Bateria", bat ? `${bat.level}%${bat.charging ? " · carregando" : ""}` : "—",
+        bat && bat.level < LOW_BATTERY && !bat.charging ? "warn" : ""],
+    ]),
+    info ? deviceDetails(info) : null,
+  );
+}
+
+// ------------------------------------------------------------ página de dispositivos
 
 function renderDevicesPage() {
   const st = app.status;
   const devices = st.devices || [];
+  const rows = devices.map((d) => {
+    const info = app.info[d.serial] || {};
+    const ready = d.state === "device";
+    const state = ready ? "Conectado" : d.state === "unauthorized" ? "Aguardando autorização" : d.state;
+    return el("div", { class: "list-row" },
+      icon("phone", "circle"),
+      el("div", { class: "grow" }, el("strong", {}, deviceName(d)),
+        el("span", { class: "muted small" }, joinParts(d.serial, info.android && `Android ${info.android}`, info.rom))),
+      el("span", { class: `pill ${ready ? "ok" : "warn"}` }, el("span", { class: "dot" }), state),
+      ready ? el("button", { onclick: () => { app.serial = d.serial; go("#varredura"); refreshStatus(); } }, "Usar este") : null);
+  });
   fill($("#devices-list"), el("div", { class: "card" },
     el("h2", {}, "Detectados agora"),
-    el("p", { class: "muted small" }, st.adb ? `adb: ${st.adb}` : "adb não instalado — sudo pacman -S android-tools"),
-    devices.length ? devices.map((d) => {
-      const info = app.info[d.serial] || {};
-      const ready = d.state === "device";
-      return el("div", { class: "list-row" },
-        icon("phone", "circle"),
-        el("div", { class: "grow" }, el("strong", {}, deviceName(d)),
-          el("span", { class: "muted small" }, [d.serial, info.android && `Android ${info.android}`, info.rom]
-            .filter(Boolean).join(" · "))),
-        el("span", { class: `pill ${ready ? "ok" : "warn"}` }, el("span", { class: "dot" }),
-          ready ? "Conectado" : d.state === "unauthorized" ? "Aguardando autorização" : d.state),
-        ready ? el("button", { onclick: () => { app.serial = d.serial; go("#varredura"); refreshStatus(); } }, "Usar este") : null);
-    }) : el("div", { class: "empty" }, "Nenhum aparelho detectado pelo cabo USB.")));
+    el("p", { class: "muted small" }, st.adb ? `adb: ${st.adb}` : `adb não instalado — ${INSTALL_HINTS.adb}`),
+    rows.length ? rows : el("div", { class: "empty" }, "Nenhum aparelho detectado pelo cabo USB.")));
 }

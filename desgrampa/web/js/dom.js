@@ -45,13 +45,21 @@ export function icon(name, cls = "") {
   return svg;
 }
 
+export class ApiError extends Error {
+  constructor(message, status) {
+    super(message);
+    this.status = status;   // código HTTP (ex.: 404 quando a varredura não existe mais)
+  }
+}
+
+// GET quando não há corpo; POST com JSON quando há.
 export async function api(path, body) {
   const opts = body === undefined ? {} : {
     method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
   };
   const res = await fetch(path, opts);
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+  if (!res.ok) throw new ApiError(data.error || `HTTP ${res.status}`, res.status);
   return data;
 }
 
@@ -63,6 +71,8 @@ export const store = {
     try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* armazenamento indisponível */ }
   },
 };
+
+// ---- formatação de datas e números
 
 export function fmtDate(s) {
   if (!s) return "—";

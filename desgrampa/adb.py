@@ -17,11 +17,11 @@ def adb_path():
 def _run(args, timeout=60):
     adb = adb_path()
     if not adb:
-        raise AdbError("adb não encontrado. Instale com: sudo pacman -S android-tools")
+        raise AdbError("adb não encontrado: instale o Android platform-tools (pacote adb ou android-tools)")
     try:
-        proc = subprocess.run(
-            [adb, *args], capture_output=True, text=True, errors="replace", timeout=timeout
-        )
+        # check=False: o código de saída é tratado abaixo (só "error:" do próprio adb vira exceção)
+        proc = subprocess.run([adb, *args], capture_output=True, text=True, errors="replace",
+                              timeout=timeout, check=False)
     except subprocess.TimeoutExpired:
         raise AdbError(f"tempo esgotado executando: adb {' '.join(args)}")
     if proc.returncode != 0 and proc.stderr.strip().startswith(("error:", "adb: error")):

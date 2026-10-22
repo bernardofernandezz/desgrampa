@@ -1,9 +1,8 @@
-"""Resumo do aparelho para o cartão da interface (modelo comercial, ROM, bateria) e
-listagem dos relatórios já salvos em disco."""
+"""Resumo do aparelho para o cartão da interface: modelo, ROM, chip, bateria, armazenamento etc.
 
-import json
+Tudo vem de uma única chamada `adb shell` (COLLECT), separada em blocos por um marcador."""
+
 import re
-from pathlib import Path
 
 from .context import parse_getprop
 
@@ -21,6 +20,12 @@ MARKET_NAME_PROPS = ["ro.product.marketname", "ro.product.vendor.marketname", "r
                      "ro.vendor.oplus.market.name", "ro.product.odm.marketname"]
 
 
+def _miui_version(props, ui_name):
+    """'V13.0.4.0.SJZMIXM' (build) -> '13.0.4'; sem build detalhada, usa o nome da interface ('V130' -> '130')."""
+    build = re.match(r"V?(\d+)\.(\d+)\.(\d+)\.\d+", props.get("ro.build.version.incremental", ""))
+    return ".".join(build.groups()) if build else ui_name.lstrip("V")
+
+
 def rom_version(props):
     for prop, name in ROM_PROPS:
         value = props.get(prop)
@@ -30,8 +35,7 @@ def rom_version(props):
             n = int(value)
             return f"One UI {n // 10000}.{n // 100 % 100}" + (f".{n % 100}" if n % 100 else "")
         if prop == "ro.miui.ui.version.name":
-            inc = re.match(r"V?(\d+(?:\.\d+){1,3})", props.get("ro.build.version.incremental", ""))
-            return f"MIUI {inc.group(1).rsplit('.', 1)[0] if inc and inc.group(1).count('.') == 3 else value.lstrip('V')}"
+            return f"MIUI {_miui_version(props, value)}"
         return f"{name} {value}"
     return None
 
@@ -133,37 +137,3 @@ def summarize(serial, out, transport=None):
         "battery": parse_battery(battery_out),
         "transport": transport,
     }
-
-
-def list_reports(reports_dir):
-    """Relatórios salvos (mais recentes primeiro), lendo só o resumo de cada relatorio.json."""
-    items = []
-    for d in sorted(Path(reports_dir).glob("*/relatorio.json"), reverse=True):
-        try:
-            r = json.loads(d.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            continue
-        dev = r.get("device", {})
-        items.append({
-            "name": d.parent.name,
-            "started": r.get("started"),
-            "mode": r.get("mode"),
-            "device": " ".join(x for x in (dev.get("manufacturer"), dev.get("model")) if x) or dev.get("serial"),
-            "serial": dev.get("serial"),
-            "verdict": r.get("verdict"),
-            "counts": r.get("counts"),
-            "duration_s": r.get("duration_s"),
-            "categories_verified": r.get("stats", {}).get("categories_verified"),
-            "categories_total": r.get("stats", {}).get("categories_total"),
-        })
-    return items
-
-
-def report_path(reports_dir, name, filename="relatorio.json"):
-    """Caminho seguro para um arquivo de relatório (sem escapar da pasta de relatórios)."""
-    if not re.fullmatch(r"[\w.-]+", name) or filename not in ("relatorio.json", "relatorio.html"):
-        return None
-    path = (Path(reports_dir) / name / filename).resolve()
-    if Path(reports_dir).resolve() not in path.parents or not path.is_file():
-        return None
-    return path

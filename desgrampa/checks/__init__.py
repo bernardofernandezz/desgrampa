@@ -1,4 +1,8 @@
+"""Base comum das verificações: categorias, permissões de risco, Finding e helpers."""
+
 from dataclasses import asdict, dataclass
+
+from ..context import ALT_STORES
 
 SEVERITIES = ["critica", "alta", "media", "baixa", "info"]
 SEVERITY_LABELS = {
@@ -32,7 +36,6 @@ CATEGORIES = [
     ("protecoes", "Proteções do sistema",
      "Play Protect, instalação de fontes desconhecidas e patch de segurança."),
 ]
-CATEGORY_IDS = [c[0] for c in CATEGORIES]
 
 # Permissões/recursos considerados sensíveis para monitoramento -> (pontos, descrição)
 RISKY_PERMISSIONS = {
@@ -103,15 +106,15 @@ class Finding:
         return d
 
 
-def ioc_category(match):
-    return "mercenario" if match.mercenary else "spyware"
+def ioc_category(match, default="spyware"):
+    """Categoria de um achado ligado a indicador: spyware mercenário tem área própria."""
+    return "mercenario" if match.mercenary else default
 
 
 def app_label(ctx, pkg):
     p = ctx.packages.get(pkg)
     if p is None:
         return pkg
-    from ..context import ALT_STORES
     if not p.third_party:
         origin = "app do sistema"
     elif p.manual_install:
@@ -129,19 +132,21 @@ def spy_signals(ctx, pkg):
     if not p:
         return []
     signals = []
-    if pkg in {x for x, _ in ctx.accessibility}:
+    if pkg in ctx.accessibility_packages:
         signals.append("acessibilidade ativa")
-    if pkg in {x for x, _ in ctx.notification_listeners}:
+    if pkg in ctx.listener_packages:
         signals.append("lê notificações")
     if pkg in ctx.device_policy["admins"] or pkg == ctx.device_policy["device_owner"]:
         signals.append("administrador do aparelho")
     if p.has_launcher is False:
         signals.append("sem ícone")
     risky = [d for perm, (_, d) in RISKY_PERMISSIONS.items() if perm in p.granted]
-    if len(risky) >= 2:
+    if len(risky) >= MIN_RISKY_PERMISSIONS:
         signals.append("permissões: " + ", ".join(risky[:4]))
     return signals
 
+
+MIN_RISKY_PERMISSIONS = 2   # a partir de quantas permissões sensíveis isso vira um "sinal"
 
 SAFETY_TIP = ("Antes de remover, pense na sua segurança: quem instalou pode ser avisado da remoção. "
               "Guarde o relatório e as evidências e, se possível, procure apoio especializado.")

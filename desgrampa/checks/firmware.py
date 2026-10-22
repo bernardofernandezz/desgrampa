@@ -78,7 +78,6 @@ def run(ctx):
     if ctx.full:
         ctx.progress("Verificando o certificado do firmware")
         cert = platform_certificate(ctx)
-        ctx.data["platform_cert"] = cert
         if cert in AOSP_TEST_KEYS:
             findings.append(Finding(
                 "alta", "Firmware assinado com chave pública de teste",

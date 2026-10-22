@@ -1,4 +1,8 @@
-"""Relatório HTML autocontido (para salvar/imprimir/entregar a um especialista)."""
+"""Relatório HTML autocontido (para salvar, imprimir ou entregar a um especialista).
+
+render() junta seções independentes; cada função _secao recebe o resultado e devolve um trecho HTML.
+Todo texto vindo do aparelho passa por e() (escape de HTML).
+"""
 
 from html import escape
 
@@ -6,6 +10,9 @@ from .checks import SEVERITY_LABELS
 
 STATUS_LABELS = {"critica": "Crítico", "alta": "Suspeito", "media": "Atenção", "baixa": "Baixo risco",
                  "ok": "Nada encontrado", "nao_verificado": "Não verificado"}
+# severidade -> (singular, plural, classe CSS)
+SEV_PLURAL = {"critica": ("crítico", "críticos", "c"), "alta": ("alto", "altos", "a"), "media": ("médio", "médios", "m"),
+              "baixa": ("baixo", "baixos", ""), "info": ("informativo", "informativos", "")}
 
 CSS = """
 body{font:14.5px/1.5 system-ui,sans-serif;max-width:960px;margin:32px auto;padding:0 16px;color:#1d2330;background:#fff}
@@ -26,48 +33,38 @@ details.cat>summary{font-size:16px;border-bottom:1px solid #eee}details.src{marg
 .cnt .m{color:#b58900;font-weight:600}.sug{border:1px solid #f0c9c9;background:#fdf6f6;border-radius:8px;padding:10px 14px;margin:8px 0}
 """
 
-SEV_PLURAL = {"critica": ("crítico", "críticos", "c"), "alta": ("alto", "altos", "a"), "media": ("médio", "médios", "m"),
-              "baixa": ("baixo", "baixos", ""), "info": ("informativo", "informativos", "")}
+
+# ---------------------------------------------------------------- helpers
+
+def e(value):
+    return escape("" if value is None else str(value))
+
+
+def table(headers, rows):
+    head = "".join(f"<th>{e(h)}</th>" for h in headers)
+    body = "".join("<tr>" + "".join(f"<td>{e(c)}</td>" for c in row) + "</tr>" for row in rows)
+    return f"<table><tr>{head}</tr>{body}</table>"
 
 
 def counts_line(counts):
-    """“10 críticos · 10 altos · 5 médios” (só severidades presentes)."""
-    parts = []
-    for sev, (one, many, cls) in SEV_PLURAL.items():
-        n = counts.get(sev, 0)
-        if n:
-            parts.append(f"<span class='{cls}'>{n} {one if n == 1 else many}</span>")
+    """“10 críticos · 10 altos · 5 médios” (só as severidades presentes)."""
+    parts = [f"<span class='{cls}'>{counts[sev]} {one if counts[sev] == 1 else many}</span>"
+             for sev, (one, many, cls) in SEV_PLURAL.items() if counts.get(sev)]
     return " · ".join(parts)
 
 
 def finding_html(f):
+    recommendation = f"<div class=rec><b>O que fazer:</b> {e(f['recommendation'])}</div>" if f["recommendation"] else ""
     return (f"<div class=f><span class='sev {e(f['severity'])}'>{e(SEVERITY_LABELS[f['severity']])}</span>"
-            f"<strong>{e(f['title'])}</strong><div>{e(f['detail'])}</div>"
-            + (f"<div class=rec><b>O que fazer:</b> {e(f['recommendation'])}</div>" if f["recommendation"] else "")
-            + f"<div class=muted style='font-size:12px'>{e(f['check'])}</div></div>")
+            f"<strong>{e(f['title'])}</strong><div>{e(f['detail'])}</div>{recommendation}"
+            f"<div class=muted style='font-size:12px'>{e(f['check'])}</div></div>")
 
 
-def e(v):
-    return escape("" if v is None else str(v))
+# ---------------------------------------------------------------- seções
 
-
-def table(headers, rows):
-    out = ["<table><tr>" + "".join(f"<th>{e(h)}</th>" for h in headers) + "</tr>"]
-    for r in rows:
-        out.append("<tr>" + "".join(f"<td>{e(c)}</td>" for c in r) + "</tr>")
-    out.append("</table>")
-    return "".join(out)
-
-
-def render(r):
-    d = r["device"]
-    v = r["verdict"]
-    data = r.get("data", {})
-    s = r["stats"]
+def _header(r):
+    d, v, s, iocs = r["device"], r["verdict"], r["stats"], r["iocs"]
     out = [
-        "<!doctype html><html lang=pt-BR><meta charset=utf-8>",
-        "<meta name=viewport content='width=device-width,initial-scale=1'>",
-        f"<title>Relatório Desgrampa</title><style>{CSS}</style><body>",
         "<h1>Relatório de varredura</h1>",
         f"<div class=muted>{e(d.get('manufacturer'))} {e(d.get('model'))} · Android {e(d.get('android'))} · "
         f"patch {e(d.get('security_patch'))} · serial {e(d.get('serial'))} · {e(r['started'])} · varredura "
@@ -76,57 +73,79 @@ def render(r):
         f"<p class=muted>{s['categories_verified']}/{s['categories_total']} áreas verificadas · "
         f"{s['checks_run']}/{s['checks_total']} verificações executadas · {s['commands']} comandos coletados · "
         f"{s['packages']} apps ({s['third_party']} do usuário, {s['sideloaded']} fora da loja) · "
-        f"{r['iocs']['total']} indicadores de {len(r['iocs']['collections'])} bases ({e(r['iocs']['source'])}, "
-        f"{e(r['iocs']['updated'])}).</p>",
+        f"{iocs['total']} indicadores de {len(iocs['collections'])} bases ({e(iocs['source'])}, {e(iocs['updated'])}).</p>",
     ]
     if r.get("evidence_dir"):
         out.append(f"<p class=muted>Evidências (comandos brutos, bugreport, MVT, SHA256SUMS): "
                    f"<code>{e(r['evidence_dir'])}</code></p>")
+    return "".join(out)
 
-    out.append("<h2>Áreas verificadas</h2><table class=cats><tr><th>Área</th><th>Resultado</th><th>Verificações</th></tr>")
+
+def _categories(r):
+    rows = []
     for c in r["categories"]:
-        checks = "; ".join(f"{x['name']}" + (f" ({x['reason']})" if x["status"] != "ok" else "") for x in c["checks"])
-        out.append(f"<tr><td class='st-{e(c['status'])}'>{e(c['title'])}</td><td>{e(STATUS_LABELS[c['status']])}</td>"
-                   f"<td class=muted>{e(checks)}</td></tr>")
-    out.append("</table>")
+        checks = "; ".join(x["name"] + (f" ({x['reason']})" if x["status"] != "ok" else "") for x in c["checks"])
+        rows.append(f"<tr><td class='st-{e(c['status'])}'>{e(c['title'])}</td><td>{e(STATUS_LABELS[c['status']])}</td>"
+                    f"<td class=muted>{e(checks)}</td></tr>")
+    return ("<h2>Áreas verificadas</h2><table class=cats><tr><th>Área</th><th>Resultado</th><th>Verificações</th></tr>"
+            + "".join(rows) + "</table>")
 
-    cands = r.get("removal_candidates", [])
+
+def _suggestions(r):
+    candidates = r.get("removal_candidates", [])
+    if not candidates:
+        return ""
     done = {a["package"]: a for a in r.get("actions", []) if a.get("status") == "ok"}
-    if cands:
-        out.append("<h2>Ações sugeridas</h2><p class=muted>Apps com achado crítico ou de spyware/malware. "
-                   "Nada é removido automaticamente: a remoção só acontece se você confirmar no app.</p>")
-        for c in cands:
-            act = done.get(c["package"])
-            out.append(f"<div class=sug><b>{e(c['family'] or c['package'])}</b> <code>{e(c['package'])}</code>"
-                       f"<span class=cnt>{counts_line(c['counts'])}</span><br><span class=muted>"
-                       f"{e('; '.join(c['reasons']))}</span>"
-                       + (f"<br><b>Ação realizada:</b> {e(act['action'])} em {e(act['time'])}" if act else "")
-                       + ("<br><b>Spyware mercenário:</b> não remova antes de uma análise forense." if c["mercenary"] else "")
-                       + "</div>")
+    out = ["<h2>Ações sugeridas</h2><p class=muted>Apps com achado crítico ou de spyware/malware. Nada é removido "
+           "automaticamente: a remoção só acontece se você confirmar no app.</p>"]
+    for c in candidates:
+        action = done.get(c["package"])
+        out.append(f"<div class=sug><b>{e(c['family'] or c['package'])}</b> <code>{e(c['package'])}</code>"
+                   f"<span class=cnt>{counts_line(c['counts'])}</span><br>"
+                   f"<span class=muted>{e('; '.join(c['reasons']))}</span>"
+                   + (f"<br><b>Ação realizada:</b> {e(action['action'])} em {e(action['time'])}" if action else "")
+                   + ("<br><b>Spyware mercenário:</b> não remova antes de uma análise forense." if c["mercenary"] else "")
+                   + "</div>")
+    return "".join(out)
 
-    out.append("<h2>Achados por categoria e origem</h2>")
+
+def _findings_tree(r):
     if not r["findings"]:
-        out.append("<p>Nenhum achado.</p>")
+        return "<h2>Achados por categoria e origem</h2><p>Nenhum achado.</p>"
+    out = ["<h2>Achados por categoria e origem</h2>"]
     for cat in r.get("tree", []):
         out.append(f"<details class=cat open><summary><b>{e(cat['title'])}</b> ({cat['total']})"
                    f"<span class=cnt>{counts_line(cat['counts'])}</span></summary>")
         for src in cat["children"]:
-            out.append(f"<details class=src {'open' if src['worst'] in ('critica', 'alta') else ''}><summary>"
-                       f"<b>{e(src['label'])}</b> ({src['total']})<span class=cnt>{counts_line(src['counts'])}</span>"
-                       "</summary>" + "".join(finding_html(r["findings"][i]) for i in src["items"]) + "</details>")
+            is_open = "open" if src["worst"] in ("critica", "alta") else ""
+            out.append(f"<details class=src {is_open}><summary><b>{e(src['label'])}</b> ({src['total']})"
+                       f"<span class=cnt>{counts_line(src['counts'])}</span></summary>"
+                       + "".join(finding_html(r["findings"][i]) for i in src["items"]) + "</details>")
         out.append("</details>")
-    if r.get("groups"):
-        out.append("<h2>Resumo por origem</h2>" + table(
-            ["Origem", "Total", "Críticos", "Altos", "Médios", "Baixos", "Áreas"],
-            [(g["label"], g["total"], g["counts"]["critica"], g["counts"]["alta"], g["counts"]["media"],
-              g["counts"]["baixa"], ", ".join(g["categories"])) for g in r["groups"] if g["worst"] != "info"]))
-    if r.get("actions"):
-        out.append("<h2>Ações realizadas no aparelho</h2>" + table(
-            ["Quando", "App", "Ação", "Resultado", "Cópia do APK"],
-            [(a["time"], a["package"], a["action"], a.get("message"), ", ".join(s["file"] for s in a.get("saved", [])) or "—")
-             for a in r["actions"]]))
+    return "".join(out)
 
-    out.append("<h2>Dados coletados</h2>")
+
+def _groups_summary(r):
+    groups = [g for g in r.get("groups", []) if g["worst"] != "info"]
+    if not groups:
+        return ""
+    return "<h2>Resumo por origem</h2>" + table(
+        ["Origem", "Total", "Críticos", "Altos", "Médios", "Baixos", "Áreas"],
+        [(g["label"], g["total"], g["counts"]["critica"], g["counts"]["alta"], g["counts"]["media"],
+          g["counts"]["baixa"], ", ".join(g["categories"])) for g in groups])
+
+
+def _actions_log(r):
+    if not r.get("actions"):
+        return ""
+    return "<h2>Ações realizadas no aparelho</h2>" + table(
+        ["Quando", "App", "Ação", "Resultado", "Cópia do APK"],
+        [(a["time"], a["package"], a["action"], a.get("message"),
+          ", ".join(s["file"] for s in a.get("saved", [])) or "—") for a in r["actions"]])
+
+
+def _network_data(data):
+    out = []
     links = data.get("links", [])
     if links:
         out.append("<h3>Conexões de rede ativas</h3>" + table(
@@ -147,15 +166,21 @@ def render(r):
             [(u["package"], f"{u['bg_tx'] // 1048576} MB", f"{u['fg_tx'] // 1048576} MB") for u in rede["data_usage"]]))
     pc = data.get("pcnet")
     if pc:
+        public_ip = pc.get("public_ip") or {}
         out.append("<h3>Rede local (pelo computador)</h3>"
                    f"<p class=muted>Gateway {e(pc.get('gateway'))} ({e(pc.get('gateway_mac'))}) · DNS "
-                   f"{e(', '.join(pc.get('dns_servers', [])))} · IP público "
-                   f"{e((pc.get('public_ip') or {}).get('ip'))} ({e((pc.get('public_ip') or {}).get('country'))})</p>"
+                   f"{e(', '.join(pc.get('dns_servers', [])))} · IP público {e(public_ip.get('ip'))} "
+                   f"({e(public_ip.get('country'))})</p>"
                    + table(["Site", "Emissor do certificado", "Resultado"],
                            [(t["host"], t.get("issuer"), t["status"]) for t in pc.get("tls", [])])
                    + table(["Domínio", "DNS da rede", "DoH", "Resultado"],
                            [(t["domain"], ", ".join(t["system"]), ", ".join(t["doh"] or []), t["status"])
                             for t in pc.get("dns", [])]))
+    return "".join(out)
+
+
+def _phone_data(data):
+    out = []
     tel = data.get("telefonia")
     if tel:
         out.append("<h3>Telefonia</h3>"
@@ -174,26 +199,50 @@ def render(r):
             out.append("<h3>Perfis adicionais</h3>" + table(
                 ["Usuário", "Tipo", "Apps de terceiros", "Só neste perfil"],
                 [(u["id"], u["kind"], len(u["apps"]), ", ".join(u["only_here"]) or "—") for u in contas["extra_users"]]))
-    rastros = data.get("rastros")
-    if rastros and rastros["removed"]:
+    return "".join(out)
+
+
+def _traces_data(data):
+    out = []
+    rastros = data.get("rastros") or {}
+    if rastros.get("removed"):
         out.append("<h3>Apps que já estiveram no aparelho</h3>" + table(
             ["Pacote", "Onde foi visto", "Indicador"],
             [(x["package"], ", ".join(x["sources"]), x["ioc"] or "—") for x in rastros["removed"]]))
-    if rastros and rastros["install_events"]:
+    if rastros.get("install_events"):
         out.append("<h3>Instalações e remoções registradas</h3>" + table(
             ["Quando", "Evento", "Pacote"], [(x["time"] or "?", x["event"], x["package"]) for x in rastros["install_events"]]))
-    if data.get("mvt"):
-        m = data["mvt"]
+    m = data.get("mvt")
+    if m:
         out.append(f"<h3>MVT</h3><p>Versão {e(m['version'])} · {m['alerts']} alerta(s) · "
                    f"{m['modules_with_data']} módulos com dados · bugreport {m['bugreport_mb']} MB · "
                    f"resultados em <code>{e(m['output_dir'])}</code></p>")
+    return "".join(out)
 
-    out.append("<h2>Aplicativos instalados pelo usuário</h2>" + table(
+
+def _apps(r):
+    return "<h2>Aplicativos instalados pelo usuário</h2>" + table(
         ["Pacote", "Risco", "Origem", "Motivos", "SHA-256"],
         [(a["package"], a["score"], "fora da loja" if a["sideloaded"] else (a["installer"] or "?"),
-          ", ".join(a["reasons"]), a.get("sha256") or "—") for a in r["apps"]]))
-    if r["notes"]:
-        out.append("<h2>Limitações desta varredura</h2><ul>" + "".join(f"<li>{e(n)}</li>" for n in r["notes"]) + "</ul>")
-    out.append("<p class=muted>Gerado pelo Desgrampa. A ausência de achados não prova que o aparelho esteja "
-               "limpo; para suspeita de spyware mercenário, procure análise forense especializada.</p></body></html>")
-    return "\n".join(out)
+          ", ".join(a["reasons"]), a.get("sha256") or "—") for a in r["apps"]])
+
+
+def _notes(r):
+    if not r["notes"]:
+        return ""
+    return "<h2>Limitações desta varredura</h2><ul>" + "".join(f"<li>{e(n)}</li>" for n in r["notes"]) + "</ul>"
+
+
+def render(r):
+    data = r.get("data", {})
+    sections = [
+        _header(r), _categories(r), _suggestions(r), _findings_tree(r), _groups_summary(r), _actions_log(r),
+        "<h2>Dados coletados</h2>", _network_data(data), _phone_data(data), _traces_data(data),
+        _apps(r), _notes(r),
+    ]
+    return ("<!doctype html><html lang=pt-BR><meta charset=utf-8>"
+            "<meta name=viewport content='width=device-width,initial-scale=1'>"
+            f"<title>Relatório Desgrampa</title><style>{CSS}</style><body>"
+            + "\n".join(s for s in sections if s)
+            + "<p class=muted>Gerado pelo Desgrampa. A ausência de achados não prova que o aparelho esteja limpo; "
+              "para suspeita de spyware mercenário, procure análise forense especializada.</p></body></html>")

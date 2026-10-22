@@ -36,7 +36,9 @@ desgrampa/
   iocs.py         bases de indicadores (AssoEchap + STIX2 do MVT)
   grouping.py     agrupamento categoria → origem e sugestões de remoção
   actions.py      remoção/desativação de apps — só por pedido explícito do usuário
-  devinfo.py      resumo do aparelho para o painel; listagem de relatórios
+  devinfo.py      resumo do aparelho para o painel
+  evidence.py     pasta de cada varredura: salvar, listar e carregar relatórios (com SHA256SUMS)
+  util.py         utilitários compartilhados (regex de pacote, sha256 de arquivo)
   report.py       relatório HTML exportável
   apksig.py       leitura do certificado de assinatura de APKs (v1/v2/v3), só com a stdlib
   paths.py        onde ficam dados e relatórios

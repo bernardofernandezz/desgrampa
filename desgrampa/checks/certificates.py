@@ -16,7 +16,6 @@ FULL_ONLY = True
 def run(ctx):
     findings = []
     apps = sorted(ctx.third_party(), key=lambda p: p.name)
-    results = ctx._cache.setdefault("apk_info", {})
     with tempfile.TemporaryDirectory(prefix="desgrampa-") as tmp:
         for i, app in enumerate(apps, 1):
             if not app.path:
@@ -33,7 +32,7 @@ def run(ctx):
             finally:
                 if os.path.exists(local):
                     os.unlink(local)
-            results[app.name] = {"sha256": sha256, "certificates": [c["sha1"] for c in certs]}
+            ctx.apk_info[app.name] = {"sha256": sha256, "certificates": [c["sha1"] for c in certs]}
             if ctx.iocs.match_package(app.name):
                 continue  # já reportado pelo nome
             match = ctx.iocs.match_apk_hash(sha256)

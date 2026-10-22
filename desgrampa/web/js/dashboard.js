@@ -10,19 +10,53 @@ function deviceTitle(d) {
   return `${maker} ${d.model || ""}`.trim() || d.serial;
 }
 
-export function renderDashboard(container, r, links, reload) {
+// Veredito + números principais.
+function heroSection(r) {
   const d = r.device;
   const s = r.stats;
+  const kpi = (label, value, cls = "") => el("div", { class: `kpi ${cls}` }, el("span", {}, label), el("strong", {}, value));
+  return el("div", { class: "hero" },
+    el("div", { class: `verdict ${r.verdict.code}` },
+      el("h2", {}, r.verdict.label),
+      el("p", {}, r.verdict.text),
+      el("p", { class: "muted small" },
+        `Android ${d.android || "?"} · patch ${d.security_patch || "?"} · ${fmtDate(r.started)} · varredura ${r.mode}`),
+      r.verdict.code === "ok" ? el("p", { class: "muted small" },
+        "Nada foi encontrado, mas isso não prova que o aparelho está limpo. Spyware mercenário pode não deixar "
+        + "rastros acessíveis sem análise forense.") : null),
+    el("div", { class: "kpis" },
+      kpi("Críticos", r.counts.critica, r.counts.critica ? "crit" : ""),
+      kpi("Altos", r.counts.alta, r.counts.alta ? "high" : ""),
+      kpi("Médios", r.counts.media, r.counts.media ? "med" : ""),
+      kpi("Áreas verificadas", `${s.categories_verified}/${s.categories_total}`),
+      kpi("Apps analisados", `${s.packages}`),
+      kpi("Indicadores consultados", r.iocs.total.toLocaleString("pt-BR"))));
+}
+
+// Bloco de uma das 12 áreas; clicar filtra os achados daquela área.
+function categoryTile(c, onClick) {
+  const counts = ["critica", "alta", "media", "baixa"].filter((sv) => c.counts[sv])
+    .map((sv) => `${c.counts[sv]} ${SEV_LABEL[sv].toLowerCase()}`).join(" · ");
+  const skipped = c.checks.filter((x) => x.status !== "ok");
+  const notVerified = c.status === "nao_verificado";
+  return el("button", { class: `cat st-${c.status}`, onclick: onClick, title: c.description },
+    el("div", { class: "cat-top" }, el("span", { class: "cat-title" }, c.title),
+      el("span", { class: "cat-status" }, STATUS_LABEL[c.status])),
+    el("div", { class: "cat-counts" }, counts || (notVerified ? "" : "nenhum achado relevante")),
+    el("div", { class: "cat-desc" }, notVerified && skipped.length ? skipped.map((x) => x.reason).join("; ") : c.description));
+}
+
+export function renderDashboard(container, r, links, reload) {
+  const d = r.device;
   const ui = { severities: new Set(["critica", "alta", "media", "baixa"]), category: null, tab: "achados",
     groupBy: store.get("desgrampa-groupby", "categoria") };
 
-  const findingsBox = el("div");
   const catTiles = new Map();
   const tabButtons = new Map();
   const panel = el("div", { class: "tabpanel" });
 
   const tabs = {
-    achados: ["Achados", () => findingsTab(r, ui, findingsBox, redraw)],
+    achados: ["Achados", () => findingsTab(r, ui, redraw)],
     rede: ["Rede", () => networkTab(r.data)],
     telefonia: ["Telefonia", () => telephonyTab(r.data.telefonia)],
     contas: ["Contas e perfis", () => accountsTab(r.data.contas, r.data.controle)],
@@ -46,22 +80,10 @@ export function renderDashboard(container, r, links, reload) {
   }
 
   const cats = el("div", { class: "cats" }, r.categories.map((c) => {
-    const n = c.counts;
-    const counts = ["critica", "alta", "media", "baixa"].filter((k) => n[k])
-      .map((k) => `${n[k]} ${SEV_LABEL[k].toLowerCase()}`).join(" · ");
-    const skipped = c.checks.filter((x) => x.status !== "ok");
-    const tile = el("button", { class: `cat st-${c.status}`, onclick: () => selectCategory(c.id), title: c.description },
-      el("div", { class: "cat-top" }, el("span", { class: "cat-title" }, c.title),
-        el("span", { class: "cat-status" }, STATUS_LABEL[c.status])),
-      el("div", { class: "cat-counts" }, counts || (c.status === "nao_verificado" ? "" : "nenhum achado relevante")),
-      el("div", { class: "cat-desc" }, c.status === "nao_verificado" && skipped.length
-        ? skipped.map((x) => x.reason).join("; ") : c.description),
-    );
+    const tile = categoryTile(c, () => selectCategory(c.id));
     catTiles.set(c.id, tile);
     return tile;
   }));
-
-  const kpi = (label, value, cls = "") => el("div", { class: `kpi ${cls}` }, el("span", {}, label), el("strong", {}, value));
 
   fill(container, el("div", { class: "result-head" },
       el("div", {}, el("div", { class: "eyebrow", style: "margin:0" }, "Resultado"),
@@ -69,24 +91,7 @@ export function renderDashboard(container, r, links, reload) {
       el("div", { class: "actions" },
         el("a", { href: links.html, download: true }, el("button", {}, icon("download", "sm"), "Relatório HTML")),
         el("a", { href: links.json, download: true }, el("button", {}, icon("download", "sm"), "JSON")))),
-    el("div", { class: "hero" },
-      el("div", { class: `verdict ${r.verdict.code}` },
-        el("h2", {}, r.verdict.label),
-        el("p", {}, r.verdict.text),
-        el("p", { class: "muted small" },
-          `Android ${d.android || "?"} · patch ${d.security_patch || "?"} · ${fmtDate(r.started)} · varredura ${r.mode}`),
-        r.verdict.code === "ok" ? el("p", { class: "muted small" },
-          "Nada foi encontrado, mas isso não prova que o aparelho está limpo. Spyware mercenário pode não deixar rastros acessíveis sem análise forense.") : null,
-      ),
-      el("div", { class: "kpis" },
-        kpi("Críticos", r.counts.critica, r.counts.critica ? "crit" : ""),
-        kpi("Altos", r.counts.alta, r.counts.alta ? "high" : ""),
-        kpi("Médios", r.counts.media, r.counts.media ? "med" : ""),
-        kpi("Áreas verificadas", `${s.categories_verified}/${s.categories_total}`),
-        kpi("Apps analisados", `${s.packages}`),
-        kpi("Indicadores consultados", r.iocs.total.toLocaleString("pt-BR")),
-      ),
-    ),
+    heroSection(r),
     suggestionsCard(r, reload),
     el("h3", {}, "Áreas analisadas ", el("span", { class: "muted small", style: "font-weight:400" }, "— clique para filtrar os achados")),
     cats,
@@ -100,7 +105,7 @@ export function renderDashboard(container, r, links, reload) {
   redraw();
 }
 
-function findingsTab(r, ui, box, redraw) {
+function findingsTab(r, ui, redraw) {
   const catTitle = Object.fromEntries(r.categories.map((c) => [c.id, c.title]));
   const visible = (i) => ui.severities.has(r.findings[i].severity) && (!ui.category || r.findings[i].category === ui.category);
   const candidates = new Map((r.removal_candidates || []).map((c) => [c.package, c]));
@@ -149,8 +154,7 @@ function findingsTab(r, ui, box, redraw) {
     });
   }
   content = (content || []).filter(Boolean);
-  fill(box, ...(content.length ? content : [el("p", { class: "muted" }, "Nenhum achado neste filtro.")]));
-  return el("div", {}, controls, box);
+  return el("div", {}, controls, content.length ? content : el("p", { class: "muted" }, "Nenhum achado neste filtro."));
 }
 
 export function countsLine(counts) {

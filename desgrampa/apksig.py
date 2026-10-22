@@ -7,6 +7,8 @@ import hashlib
 import struct
 import zipfile
 
+from .util import sha256_file
+
 V2_ID, V3_ID, V31_ID = 0x7109871A, 0xF05368C0, 0x1B93AD61
 MAGIC = b"APK Sig Block 42"
 
@@ -109,13 +111,5 @@ def certificates(path):
             for c in certs]
 
 
-def certificate_sha1s(path):
-    return [c["sha1"] for c in certificates(path)]
-
-
 def file_sha256(path):
-    h = hashlib.sha256()
-    with open(path, "rb") as f:
-        for chunk in iter(lambda: f.read(1 << 20), b""):
-            h.update(chunk)
-    return h.hexdigest()
+    return sha256_file(path)

@@ -1,7 +1,7 @@
 // Página de configurações: tema, ferramentas e bases de indicadores.
 
 import { $, api, el, fill, icon, table } from "./dom.js";
-import { app } from "./state.js";
+import { app, INSTALL_HINTS } from "./state.js";
 import { refreshStatus } from "./device.js";
 
 function iocsLine(iocs) {
@@ -11,29 +11,37 @@ function iocsLine(iocs) {
   return `${iocs.total.toLocaleString("pt-BR")} indicadores · ${iocs.families} famílias de spyware · ${iocs.source} em ${iocs.updated}`;
 }
 
+// O tema é guardado como texto puro (não JSON, como em `store`) porque o script inline do
+// index.html o lê antes de a página pintar, para evitar o "piscar" do tema claro.
+const THEME_KEY = "desgrampa-theme";
+
+function currentTheme() {
+  try { return localStorage.getItem(THEME_KEY) || "dark"; } catch { return "dark"; }
+}
+
+function applyTheme(theme) {
+  try { localStorage.setItem(THEME_KEY, theme); } catch { /* sem armazenamento */ }
+  if (theme === "system") delete document.documentElement.dataset.theme;
+  else document.documentElement.dataset.theme = theme;
+  renderSettings();
+}
+
 export function renderSettings() {
   const st = app.status;
-  let theme = "dark";
-  try { theme = localStorage.getItem("desgrampa-theme") || "dark"; } catch { /* sem armazenamento */ }
-  const setTheme = (t) => {
-    try { localStorage.setItem("desgrampa-theme", t); } catch { /* sem armazenamento */ }
-    if (t === "system") delete document.documentElement.dataset.theme;
-    else document.documentElement.dataset.theme = t;
-    renderSettings();
-  };
+  const theme = currentTheme();
   const iocs = st?.iocs;
   fill($("#settings"), el("div", { class: "card" },
       el("h2", {}, "Aparência"),
       el("p", { class: "muted small" }, "Tema da interface."),
       el("div", { class: "seg" }, [["dark", "Escuro"], ["light", "Claro"], ["system", "Sistema"]].map(([k, label]) =>
-        el("button", { class: theme === k ? "on" : "", onclick: () => setTheme(k) }, label)))),
+        el("button", { class: theme === k ? "on" : "", onclick: () => applyTheme(k) }, label)))),
     el("div", { class: "card" },
       el("h2", {}, "Ferramentas"),
       el("div", { class: "list-row" }, el("div", { class: "grow" }, el("strong", {}, "adb (Android Debug Bridge)"),
-        el("span", { class: "muted small" }, st?.adb || "não instalado — sudo pacman -S android-tools")),
+        el("span", { class: "muted small" }, st?.adb || `não instalado — ${INSTALL_HINTS.adb}`)),
         el("span", { class: `pill ${st?.adb ? "ok" : "warn"}` }, st?.adb ? "instalado" : "ausente")),
       el("div", { class: "list-row" }, el("div", { class: "grow" }, el("strong", {}, "MVT — Mobile Verification Toolkit"),
-        el("span", { class: "muted small" }, st?.mvt.installed ? `versão ${st.mvt.version}` : ".venv/bin/pip install mvt")),
+        el("span", { class: "muted small" }, st?.mvt.installed ? `versão ${st.mvt.version}` : INSTALL_HINTS.mvt)),
         el("span", { class: `pill ${st?.mvt.installed ? "ok" : "warn"}` }, st?.mvt.installed ? "instalado" : "ausente"))),
     iocs ? el("div", { class: "card" },
       el("div", { class: "list-row" },

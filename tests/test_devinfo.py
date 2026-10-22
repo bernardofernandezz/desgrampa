@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from desgrampa import devinfo
+from desgrampa import devinfo, evidence
 
 GETPROP = """\
 [ro.product.model]: [Redmi Note 9 Pro]
@@ -91,12 +91,12 @@ class DevInfoTests(unittest.TestCase):
             (d / "relatorio.json").write_text(json.dumps({
                 "started": "2026-10-20 10:10:10", "mode": "rapida", "device": {"model": "X", "serial": "ABC"},
                 "verdict": {"code": "ok"}, "counts": {}, "stats": {"categories_verified": 12, "categories_total": 12}}))
-            items = devinfo.list_reports(tmp)
+            items = evidence.list_reports(tmp)
             self.assertEqual(items[0]["name"], d.name)
-            self.assertIsNotNone(devinfo.report_path(tmp, d.name))
-            self.assertIsNone(devinfo.report_path(tmp, ".."))
-            self.assertIsNone(devinfo.report_path(tmp, d.name, "../../etc/passwd"))
-            self.assertIsNone(devinfo.report_path(tmp, "nao-existe"))
+            self.assertIsNotNone(evidence.report_path(d.name, reports_dir=tmp))
+            self.assertIsNone(evidence.report_path("..", reports_dir=tmp))
+            self.assertIsNone(evidence.report_path(d.name, "../../etc/passwd", reports_dir=tmp))
+            self.assertIsNone(evidence.report_path("nao-existe", reports_dir=tmp))
 
 
 if __name__ == "__main__":
