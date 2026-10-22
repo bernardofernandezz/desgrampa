@@ -82,7 +82,7 @@ def run(ctx):
         ctx.app_rows.append({
             "package": app.name, "score": score, "reasons": reasons,
             "installer": app.installer, "sideloaded": app.sideloaded,
-            "has_launcher": app.has_launcher, "first_install": app.first_install,
+            "has_launcher": app.has_launcher, "first_install": app.first_install, "version": app.version,
             "sha256": apk.get("sha256"), "certificates": apk.get("certificates", []),
         })
         severity = _severity(ctx, score)

@@ -8,6 +8,8 @@ import { showScan, startScan } from "./scan.js";
 import { loadReports, renderReportsPage } from "./reports.js";
 import { renderSettings } from "./settings.js";
 import { renderConnectGuide } from "./connect.js";
+import { installQuickExit, renderHelp } from "./ajuda.js";
+import { renderAttendance } from "./atendimento.js";
 
 const STATUS_REFRESH_MS = 2500;
 
@@ -17,6 +19,8 @@ function render() {
   for (const a of document.querySelectorAll(".nav a")) a.classList.toggle("on", a.dataset.page === page);
   if (page === "relatorios") renderReportsPage(arg);
   if (page === "configuracoes") renderSettings();
+  if (page === "ajuda") renderHelp();
+  if (page === "atendimento") renderAttendance();
   if (page === "dispositivos") {
     const waiting = (app.status?.devices || []).find((d) => d.state !== "device");
     renderConnectGuide($("#connect-guide"), waiting?.model);
@@ -32,6 +36,8 @@ $("#device-picker").addEventListener("change", (ev) => {
 });
 
 $("#start").addEventListener("click", startScan);
+
+installQuickExit();
 
 loadReports();
 

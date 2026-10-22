@@ -26,6 +26,10 @@
         <svg viewBox="0 0 24 24" class="ico"><rect x="6" y="2" width="12" height="20" rx="2.5"/><path d="M11 18h2"/></svg>Dispositivos</a>
       <a href="#relatorios" data-page="relatorios">
         <svg viewBox="0 0 24 24" class="ico"><path d="M14 2H7a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7l-5-5Z"/><path d="M14 2v5h5M9 13h6M9 17h6"/></svg>Relatórios</a>
+      <a href="#atendimento" data-page="atendimento" id="nav-atendimento" class="hidden">
+        <svg viewBox="0 0 24 24" class="ico"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0M16 4.5a3.5 3.5 0 0 1 0 7M21.5 20a6.5 6.5 0 0 0-4-6"/></svg>Atendimento</a>
+      <a href="#ajuda" data-page="ajuda">
+        <svg viewBox="0 0 24 24" class="ico"><path d="M12 21s-7.5-4.6-9.4-9.4C1.2 8 3.4 4.5 7 4.5c2 0 3.5 1.1 5 3 1.5-1.9 3-3 5-3 3.6 0 5.8 3.5 4.4 7.1C19.5 16.4 12 21 12 21Z"/></svg>Preciso de ajuda</a>
       <a href="#configuracoes" data-page="configuracoes">
         <svg viewBox="0 0 24 24" class="ico"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg>Configurações</a>
     </nav>
@@ -38,6 +42,8 @@
 
   <div class="main">
     <header class="topbar">
+      <button class="quick-exit" id="quick-exit" title="Troca esta página por um site comum (atalho: Esc duas vezes)">
+        <svg viewBox="0 0 24 24" class="ico sm" aria-hidden="true"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l5-5-5-5M15 12H3"/></svg>Sair rápido</button>
       <label class="device-select" id="device-select">
         <svg viewBox="0 0 24 24" class="ico"><rect x="6" y="2" width="12" height="20" rx="2.5"/><path d="M11 18h2"/></svg>
         <select id="device-picker" aria-label="Aparelho"></select>
@@ -136,6 +142,23 @@
         SHA256SUMS) na pasta de dados do Desgrampa, mostrada no terminal ao iniciar.</p>
       <div id="reports-list"></div>
       <div id="report-view" class="hidden"></div>
+    </section>
+
+    <!-- ===================== AJUDA ===================== -->
+    <section class="page hidden" id="page-ajuda">
+      <div class="eyebrow">Preciso de ajuda</div>
+      <h1>Apoio e <strong>proteção</strong></h1>
+      <p class="lead">Contatos de apoio, onde registrar a ocorrência, como guardar as provas e o que diz a lei.</p>
+      <div id="ajuda"></div>
+    </section>
+
+    <!-- ===================== ATENDIMENTO ===================== -->
+    <section class="page hidden" id="page-atendimento">
+      <div class="eyebrow">Atendimento</div>
+      <h1>Modo <strong>atendimento</strong></h1>
+      <p class="lead">Para pontos de apoio que verificam o celular de várias pessoas: termo de consentimento, número de
+        atendimento, pacote de evidências e limpeza deste computador ao final.</p>
+      <div id="atendimento"></div>
     </section>
 
     <!-- ===================== CONFIGURAÇÕES ===================== -->

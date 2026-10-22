@@ -43,6 +43,7 @@ export function renderSettings() {
       el("div", { class: "list-row" }, el("div", { class: "grow" }, el("strong", {}, "MVT — Mobile Verification Toolkit"),
         el("span", { class: "muted small" }, st?.mvt.installed ? `versão ${st.mvt.version}` : INSTALL_HINTS.mvt)),
         el("span", { class: `pill ${st?.mvt.installed ? "ok" : "warn"}` }, st?.mvt.installed ? "instalado" : "ausente"))),
+    privacyCard(st),
     iocs ? el("div", { class: "card" },
       el("div", { class: "list-row" },
         el("div", { class: "grow" }, el("h2", {}, "Bases de indicadores"),
@@ -50,8 +51,60 @@ export function renderSettings() {
         el("button", { onclick: updateIocs, disabled: iocs.job?.state === "baixando" }, icon("refresh", "sm"),
           el("span", {}, iocs.job?.state === "baixando" ? "Baixando…" : "Atualizar bases"))),
       table(["Conjunto", "Indicadores"], Object.entries(iocs.collections).map(([k, v]) => [k, v.toLocaleString("pt-BR")])),
-      el("p", { class: "muted small" }, "Fontes: AssoEchap/stalkerware-indicators e mvt-project/mvt-indicators (Anistia Internacional, Citizen Lab, Google, Meta e outros).")) : null,
+      el("p", { class: "muted small" }, "Fontes: AssoEchap/stalkerware-indicators e mvt-project/mvt-indicators (Anistia Internacional, Citizen Lab, Google, Meta e outros)."),
+      el("h3", {}, "Vulnerabilidades do Android"),
+      el("p", { class: "muted small" }, st.bulletins?.available
+        ? `${st.bulletins.total.toLocaleString("pt-BR")} falhas dos boletins de segurança (${st.bulletins.kev} exploradas ativamente), `
+          + `boletins até ${st.bulletins.latest_spl}, base gerada em ${st.bulletins.generated}. Atualizada junto com as bases acima.`
+        : "Base de vulnerabilidades ausente.")) : null,
   );
+}
+
+// Privacidade: modo sem rastros, apagar relatórios e limpar o que o navegador guardou.
+function privacyCard(st) {
+  if (!st) return null;
+  const ephemeral = st.privacy?.ephemeral;
+  const attendance = st.attendance?.enabled;
+  const msg = el("p", { class: "small", role: "status" });
+  const wipe = async () => {
+    const typed = prompt("Isto apaga TODOS os relatórios e evidências deste computador, sem volta.\nDigite APAGAR para confirmar:");
+    if (typed !== "APAGAR") return;
+    try {
+      const { removed } = await api("/api/privacy/wipe", { confirm: "APAGAR" });
+      clearBrowser();
+      msg.textContent = `${removed} relatório(s) apagado(s) e dados do navegador limpos.`;
+    } catch (e) {
+      msg.textContent = e.message;
+    }
+    await refreshStatus();
+  };
+  const toggle = async () => {
+    try {
+      await api("/api/privacy/ephemeral", { on: !ephemeral });
+    } catch (e) {
+      alert(e.message);
+    }
+    await refreshStatus();
+    renderSettings();
+  };
+  return el("div", { class: "card" },
+    el("h2", {}, "Privacidade neste computador"),
+    el("p", { class: "muted small" }, "Útil se o computador é compartilhado ou se alguém pode mexer nele depois."),
+    el("div", { class: "list-row" }, el("div", { class: "grow" }, el("strong", {}, "Modo sem rastros"),
+      el("span", { class: "muted small" }, "Relatórios das próximas varreduras ficam numa pasta temporária, apagada ao fechar o "
+        + "programa. Baixe o pacote de evidências antes de sair. Também dá para iniciar assim: desgrampa --sem-rastros")),
+    el("button", { onclick: toggle, disabled: attendance }, ephemeral ? "Desligar" : "Ligar")),
+    el("div", { class: "list-row" }, el("div", { class: "grow" }, el("strong", {}, "Apagar relatórios deste computador"),
+      el("span", { class: "muted small" }, "Remove todas as varreduras e evidências salvas e o que este navegador guardou "
+        + "(tema, checklist, estado escolhido). Baixe antes o que quiser guardar.")),
+    el("button", { class: "danger", onclick: wipe }, "Apagar tudo")),
+    msg,
+    el("p", { class: "muted small" }, "Depois, apague também o histórico do navegador (Ctrl+Shift+Del) se não quiser que "
+      + "fique registrado que você abriu o Desgrampa."));
+}
+
+function clearBrowser() {
+  try { localStorage.clear(); sessionStorage.clear(); } catch { /* sem armazenamento */ }
 }
 
 async function updateIocs() {

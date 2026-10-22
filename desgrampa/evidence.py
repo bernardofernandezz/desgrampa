@@ -8,24 +8,46 @@
         SHA256SUMS.txt
 """
 
+import io
 import json
 import re
+import shutil
 import time
+import zipfile
 from pathlib import Path
 
-from . import actions, grouping, report
+from . import __version__, actions, grouping, report
 from .paths import REPORTS_DIR
 from .util import sha256_file
 
 REPORT_FILES = ("relatorio.json", "relatorio.html")
 
 
-def new_dir(serial, started):
+def use_reports_dir(path):
+    """Troca a pasta de relatórios (modo sem rastros: uma pasta temporária apagada ao sair)."""
+    global REPORTS_DIR
+    REPORTS_DIR = Path(path)
+    REPORTS_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def current_reports_dir():
+    return REPORTS_DIR
+
+
+def new_dir(serial, started, prefix=None):
     stamp = time.strftime("%Y%m%d-%H%M%S", time.localtime(started))
     safe_serial = re.sub(r"[^\w.-]", "_", serial)
-    path = REPORTS_DIR / f"{stamp}_{safe_serial}"
-    path.mkdir(parents=True, exist_ok=True)
-    return path
+    safe_prefix = re.sub(r"[^\w-]", "_", prefix) + "_" if prefix else ""
+    base = f"{safe_prefix}{stamp}_{safe_serial}"
+    REPORTS_DIR.mkdir(parents=True, exist_ok=True)
+    for n in range(1, 1000):   # duas varreduras no mesmo segundo não podem dividir a pasta de evidências
+        path = REPORTS_DIR / (base if n == 1 else f"{base}-{n}")
+        try:
+            path.mkdir()
+            return path
+        except FileExistsError:
+            continue
+    raise RuntimeError("não foi possível criar a pasta do relatório")
 
 
 def save(base, result, raw_commands):
@@ -90,3 +112,53 @@ def load(name, reports_dir=None):
     result["report_name"] = name
     result["report_dir"] = str(path.parent)
     return result
+
+
+def integrity(name, reports_dir=None):
+    """Hashes que identificam a pasta de evidências (usados no relatório para atendimento)."""
+    path = report_path(name, reports_dir=reports_dir)
+    if not path:
+        return {}
+    base = path.parent
+    sums = base / "SHA256SUMS.txt"
+    return {"version": __version__, "report_sha256": sha256_file(path),
+            "sums_sha256": sha256_file(sums) if sums.exists() else None,
+            "files": sum(1 for p in base.rglob("*") if p.is_file())}
+
+
+def zip_reports(names, extra=None, reports_dir=None):
+    """Pacote .zip com as pastas de evidências inteiras e arquivos extras {nome: texto} (ex.: relatório
+    para atendimento). Devolve os bytes do zip."""
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        for name in names:
+            path = report_path(name, reports_dir=reports_dir)
+            if not path:
+                continue
+            for f in sorted(p for p in path.parent.rglob("*") if p.is_file()):
+                z.write(f, f"{name}/{f.relative_to(path.parent).as_posix()}")
+        for arcname, text in (extra or {}).items():
+            z.writestr(arcname, text)
+    return buf.getvalue()
+
+
+def delete_reports(names, reports_dir=None):
+    """Apaga pastas de relatório (só as que estão dentro da pasta de relatórios)."""
+    removed = 0
+    for name in names:
+        path = report_path(name, reports_dir=reports_dir)
+        if path:
+            shutil.rmtree(path.parent)
+            removed += 1
+    return removed
+
+
+def wipe(reports_dir=None):
+    """Apaga TODOS os relatórios e evidências deste computador. Devolve quantas pastas foram removidas."""
+    base = Path(reports_dir or REPORTS_DIR)
+    if not base.is_dir():
+        return 0
+    folders = [p for p in base.iterdir() if p.is_dir() and (p / "relatorio.json").exists()]
+    for p in folders:
+        shutil.rmtree(p)
+    return len(folders)

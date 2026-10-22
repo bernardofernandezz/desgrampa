@@ -28,6 +28,8 @@ def _run(args, timeout=60):
         proc = oscompat.run([adb, *args], capture_output=True, text=True, errors="replace", timeout=timeout)
     except subprocess.TimeoutExpired:
         raise AdbError(f"tempo esgotado executando: adb {' '.join(args)}")
+    except OSError as e:
+        raise AdbError(f"não foi possível executar o adb ({adb}): {e.strerror or e}")
     if proc.returncode != 0 and proc.stderr.strip().startswith(("error:", "adb: error")):
         raise AdbError(proc.stderr.strip())
     return proc

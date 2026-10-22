@@ -94,12 +94,14 @@ function showError(message) {
 }
 
 // Mostra um relatório salvo no elemento `box`; após uma remoção/desativação ele se recarrega.
-export async function showReport(box, name) {
+export async function showReport(box, name, focus = {}) {
   const report = await api(reportLinks(name).json);
-  renderDashboard(box, report, reportLinks(name), () => showReport(box, name));
+  renderDashboard(box, report, reportLinks(name), () => showReport(box, name), focus);
 }
 
 export function reportLinks(name) {
   const base = `/api/reports/${encodeURIComponent(name)}`;
-  return { html: `${base}/relatorio.html`, json: `${base}/relatorio.json` };
+  return { name, html: `${base}/relatorio.html`, json: `${base}/relatorio.json`, view: `${base}/relatorio.html?ver=1`,
+    authority: `${base}/atendimento.html`, stix: `${base}/relatorio.stix.json`, csv: `${base}/vulnerabilidades.csv`,
+    zip: `${base}/evidencias.zip` };
 }

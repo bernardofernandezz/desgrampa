@@ -129,7 +129,7 @@ def run_scan(device, iocs, mode="rapida", on_progress=None, options=None, save_e
     ctx = ScanContext(device, iocs, mode, progress, options)
     ctx.bulletins = bulletins
     if save_evidence:
-        ctx.evidence_dir = evidence.new_dir(device.serial, started)
+        ctx.evidence_dir = evidence.new_dir(device.serial, started, prefix=ctx.options.get("case"))
 
     progress("Lendo informações do aparelho")
     _ = ctx.props, ctx.packages   # coleta inicial (a parte mais demorada da varredura rápida)

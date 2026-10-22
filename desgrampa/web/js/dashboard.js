@@ -4,6 +4,10 @@ import { el, fill, fmtDate, icon, store } from "./dom.js";
 import { SEV_LABEL, SEV_ORDER, SEV_PLURAL, STATUS_LABEL } from "./state.js";
 import { suggestionsCard } from "./actions.js";
 import { accountsTab, appsTab, evidenceTab, manualTab, networkTab, telephonyTab, tracesTab } from "./tabs.js";
+import { simpleView } from "./simple.js";
+import { timelineTab, vulnsTab } from "./vulns.js";
+
+const VIEW_KEY = "desgrampa-view";   // "simples" (padrão) ou "tecnico"
 
 function deviceTitle(d) {
   const maker = d.manufacturer ? d.manufacturer.charAt(0).toUpperCase() + d.manufacturer.slice(1) : "";
@@ -46,17 +50,37 @@ function categoryTile(c, onClick) {
     el("div", { class: "cat-desc" }, notVerified && skipped.length ? skipped.map((x) => x.reason).join("; ") : c.description));
 }
 
-export function renderDashboard(container, r, links, reload) {
+// Botões de exportação: relatório pessoal, versão para atendimento/autoridade, JSON, STIX e CSV.
+function exportMenu(links) {
+  const item = (href, label, hint, download = true) => el("a", { href, download: download || null,
+    target: download ? null : "_blank", rel: "noopener", role: "menuitem" }, el("strong", {}, label), el("span", {}, hint));
+  return el("details", { class: "menu" },
+    el("summary", { class: "btn" }, icon("download", "sm"), "Baixar relatório"),
+    el("div", { class: "menu-items", role: "menu" },
+      item(links.view, "Ver e imprimir (PDF)", "Relatório para você, pronto para salvar em PDF", false),
+      item(links.authority, "Para atendimento ou autoridade", "Fatos, hashes, cadeia de custódia e base legal", false),
+      item(links.zip, "Pacote de evidências (.zip)", "Pasta inteira com hashes, para especialista ou pendrive"),
+      item(links.html, "Arquivo HTML", "Relatório completo para guardar"),
+      item(links.json, "JSON", "Todos os dados, para especialistas"),
+      item(links.stix, "STIX 2.1", "Achados e CVEs para ferramentas de inteligência"),
+      item(links.csv, "CSV de vulnerabilidades", "Planilha com as falhas abertas")));
+}
+
+export function renderDashboard(container, r, links, reload, focus = {}) {
   const d = r.device;
   const ui = { severities: new Set(["critica", "alta", "media", "baixa"]), category: null, tab: "achados",
-    groupBy: store.get("desgrampa-groupby", "categoria") };
+    groupBy: store.get("desgrampa-groupby", "categoria"), query: "", focus: focus.finding ?? null,
+    view: focus.finding != null ? "tecnico" : store.get(VIEW_KEY, "simples") };
 
   const catTiles = new Map();
   const tabButtons = new Map();
-  const panel = el("div", { class: "tabpanel" });
+  const panel = el("div", { class: "tabpanel", role: "tabpanel" });
+  const body = el("div");
 
   const tabs = {
-    achados: ["Achados", () => findingsTab(r, ui, redraw)],
+    achados: ["Achados", () => findingsTab(r, ui, redraw, links)],
+    vulns: [`Vulnerabilidades${r.data.vulns ? ` (${r.data.vulns.counts.total})` : ""}`, () => vulnsTab(r.data.vulns)],
+    tempo: ["Linha do tempo", () => timelineTab(r)],
     rede: ["Rede", () => networkTab(r.data)],
     telefonia: ["Telefonia", () => telephonyTab(r.data.telefonia)],
     contas: ["Contas e perfis", () => accountsTab(r.data.contas, r.data.controle)],
@@ -68,50 +92,99 @@ export function renderDashboard(container, r, links, reload) {
 
   function redraw() {
     for (const [cid, tile] of catTiles) tile.classList.toggle("active", ui.category === cid);
-    for (const [tid, btn] of tabButtons) btn.classList.toggle("on", ui.tab === tid);
+    for (const [tid, btn] of tabButtons) {
+      btn.classList.toggle("on", ui.tab === tid);
+      btn.setAttribute("aria-selected", String(ui.tab === tid));
+    }
     fill(panel, tabs[ui.tab][1]());
+    if (ui.focus != null) {
+      const card = panel.querySelector(`#achado-${ui.focus}`);
+      card?.classList.add("focus");
+      card?.scrollIntoView({ block: "center" });
+      ui.focus = null;
+    }
   }
 
   function selectCategory(cid) {
     ui.category = ui.category === cid ? null : cid;
-    ui.tab = "achados";
+    ui.tab = cid === "vulns" && !r.findings.some((f) => f.category === "vulns") ? "vulns" : "achados";
     redraw();
     panel.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
-  const cats = el("div", { class: "cats" }, r.categories.map((c) => {
-    const tile = categoryTile(c, () => selectCategory(c.id));
-    catTiles.set(c.id, tile);
-    return tile;
-  }));
+  function technical() {
+    catTiles.clear();
+    tabButtons.clear();
+    const cats = el("div", { class: "cats" }, r.categories.map((c) => {
+      const tile = categoryTile(c, () => selectCategory(c.id));
+      catTiles.set(c.id, tile);
+      return tile;
+    }));
+    const view = [
+      heroSection(r),
+      suggestionsCard(r, reload),
+      el("h3", {}, "Áreas analisadas ", el("span", { class: "muted small", style: "font-weight:400" }, "— clique para filtrar os achados")),
+      cats,
+      el("div", { class: "tabs", role: "tablist" }, Object.entries(tabs).map(([tid, [label]]) => {
+        const b = el("button", { role: "tab", onclick: () => { ui.tab = tid; redraw(); } }, label);
+        tabButtons.set(tid, b);
+        return b;
+      })),
+      panel,
+    ];
+    redraw();
+    return view;
+  }
+
+  function setView(view, category = null) {
+    ui.view = view;
+    store.set(VIEW_KEY, view);
+    for (const b of modeButtons) b.classList.toggle("on", b.dataset.view === view);
+    if (category) { ui.category = category; ui.tab = "achados"; }
+    fill(body, view === "simples" ? [simpleView(r, (cid) => setView("tecnico", cid)), suggestionsCard(r, reload)] : technical());
+    if (category) panel.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  const modeButtons = [["simples", "Simples"], ["tecnico", "Técnico"]].map(([k, label]) =>
+    el("button", { "data-view": k, class: ui.view === k ? "on" : "", onclick: () => setView(k),
+      title: k === "simples" ? "Resumo em linguagem simples" : "Todos os detalhes, CVEs, linha do tempo e evidências" }, label));
 
   fill(container, el("div", { class: "result-head" },
       el("div", {}, el("div", { class: "eyebrow", style: "margin:0" }, "Resultado"),
         el("h2", { style: "font-size:20px" }, deviceTitle(d))),
       el("div", { class: "actions" },
-        el("a", { href: links.html, download: true }, el("button", {}, icon("download", "sm"), "Relatório HTML")),
-        el("a", { href: links.json, download: true }, el("button", {}, icon("download", "sm"), "JSON")))),
-    heroSection(r),
-    suggestionsCard(r, reload),
-    el("h3", {}, "Áreas analisadas ", el("span", { class: "muted small", style: "font-weight:400" }, "— clique para filtrar os achados")),
-    cats,
-    el("div", { class: "tabs" }, Object.entries(tabs).map(([tid, [label]]) => {
-      const b = el("button", { onclick: () => { ui.tab = tid; redraw(); } }, label);
-      tabButtons.set(tid, b);
-      return b;
-    })),
-    panel,
+        el("div", { class: "seg", role: "group", "aria-label": "Modo de visualização" }, modeButtons),
+        exportMenu(links))),
+    body,
   );
-  redraw();
+  setView(ui.view);
 }
 
-function findingsTab(r, ui, redraw) {
+function matches(f, query) {
+  if (!query) return true;
+  return `${f.title} ${f.detail} ${f.recommendation} ${f.package || ""} ${f.family || ""}`.toLowerCase().includes(query);
+}
+
+function findingsTab(r, ui, redraw, links) {
   const catTitle = Object.fromEntries(r.categories.map((c) => [c.id, c.title]));
-  const visible = (i) => ui.severities.has(r.findings[i].severity) && (!ui.category || r.findings[i].category === ui.category);
+  const query = ui.query.trim().toLowerCase();
+  const visible = (i) => ui.severities.has(r.findings[i].severity) && (!ui.category || r.findings[i].category === ui.category)
+    && matches(r.findings[i], query);
+  const card = (i) => findingCard(r.findings[i], catTitle, i, links);
   const candidates = new Map((r.removal_candidates || []).map((c) => [c.package, c]));
   const setGroup = (g) => { ui.groupBy = g; store.set("desgrampa-groupby", g); redraw(); };
 
+  const search = el("input", { class: "search", type: "search", value: ui.query, placeholder: "Buscar nos achados",
+    "aria-label": "Buscar nos achados", oninput: (ev) => {
+      ui.query = ev.target.value;
+      const pos = ev.target.selectionStart;
+      redraw();
+      const again = document.querySelector(".tabpanel input.search");
+      again?.focus();
+      again?.setSelectionRange(pos, pos);
+    } });
   const controls = el("div", { class: "filters" },
+    search,
     el("div", { class: "seg small-seg" }, [["categoria", "Por categoria"], ["origem", "Por origem"], ["lista", "Lista"]]
       .map(([k, label]) => el("button", { class: ui.groupBy === k ? "on" : "", onclick: () => setGroup(k) }, label))),
     el("span", { class: "sep" }),
@@ -127,19 +200,20 @@ function findingsTab(r, ui, redraw) {
     const items = g.items.filter(visible);
     if (!items.length) return null;
     const cand = g.package && candidates.get(g.package);
-    return el("details", { class: `group src st-${g.worst}`, open: ["critica", "alta"].includes(g.worst) },
+    const open = Boolean(query) || ["critica", "alta"].includes(g.worst) || items.includes(ui.focus);
+    return el("details", { class: `group src st-${g.worst}`, open },
       el("summary", {},
         el("span", { class: "g-title" }, g.label, el("span", { class: "g-total" }, ` (${g.total})`)),
         countsLine(g.counts),
         extra || null,
         cand ? el("span", { class: "tag bad", title: "Sugerido para remoção" }, "remoção sugerida") : null),
-      items.map((i) => findingCard(r.findings[i], catTitle)));
+      items.map(card));
   };
 
   let content;
   if (ui.groupBy === "lista") {
     const shown = r.findings.map((_, i) => i).filter(visible);
-    content = shown.map((i) => findingCard(r.findings[i], catTitle));
+    content = shown.map(card);
   } else if (ui.groupBy === "origem") {
     content = (r.groups || []).map((g) => sourceGroup(g,
       el("span", { class: "muted small" }, g.categories.map((c) => catTitle[c]).join(" · "))));
@@ -163,9 +237,14 @@ export function countsLine(counts) {
   return el("span", { class: "counts" }, parts.flatMap((p, i) => (i ? [el("span", { class: "dotsep" }, "·"), p] : [p])));
 }
 
-function findingCard(f, catTitle) {
-  return el("div", { class: `finding s-${f.severity}` },
-    el("div", {}, el("span", { class: "sev" }, f.severity_label), el("span", { class: "title" }, f.title)),
+function findingCard(f, catTitle, index, links) {
+  const copy = async (ev) => {
+    const url = `${location.origin}/#relatorios/${links.name}/achado/${index}`;
+    try { await navigator.clipboard.writeText(url); ev.target.textContent = "Link copiado"; } catch { prompt("Link deste achado:", url); }
+  };
+  return el("div", { class: `finding s-${f.severity}`, id: `achado-${index}` },
+    el("div", {}, el("span", { class: "sev" }, f.severity_label), el("span", { class: "title" }, f.title),
+      links?.name ? el("button", { class: "link-btn small", onclick: copy, title: "Copiar link direto para este achado" }, "Copiar link") : null),
     el("p", {}, f.detail),
     f.recommendation ? el("p", { class: "rec" }, el("strong", {}, "O que fazer: "), f.recommendation) : null,
     el("p", { class: "muted small" }, [...new Set([catTitle[f.category], f.check])].filter(Boolean).join(" · ")),

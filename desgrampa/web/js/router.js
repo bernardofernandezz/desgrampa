@@ -1,5 +1,5 @@
-// Navegação por hash (#varredura, #dispositivos, #relatorios/<nome>, #configuracoes).
-export const PAGES = ["varredura", "dispositivos", "relatorios", "configuracoes"];
+// Navegação por hash (#varredura, #dispositivos, #relatorios/<nome>[/achado/<n>], #atendimento, #ajuda, #configuracoes).
+export const PAGES = ["varredura", "dispositivos", "relatorios", "atendimento", "ajuda", "configuracoes"];
 
 export function route() {
   const [page, ...rest] = location.hash.replace(/^#/, "").split("/");

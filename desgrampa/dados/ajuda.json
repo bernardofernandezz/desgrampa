@@ -1,0 +1,252 @@
+{
+  "atualizado": "2026-10-21",
+  "aviso": "Informação geral, não é aconselhamento jurídico. Textos legais conferidos em https://github.com/ctresb/leis (conversão das fontes oficiais); confira sempre a fonte antes de citar.",
+  "contatos": [
+    {
+      "nome": "Ligue 180",
+      "quando": "Violência contra a mulher: orientação, denúncia e encaminhamento. Gratuito, 24 horas, também por WhatsApp (61) 9610-0180.",
+      "url": "https://www.gov.br/mulheres/pt-br/ligue180",
+      "telefone": "180"
+    },
+    {
+      "nome": "190 — Polícia Militar",
+      "quando": "Perigo imediato.",
+      "telefone": "190"
+    },
+    {
+      "nome": "Disque 100",
+      "quando": "Violações de direitos humanos, inclusive contra crianças, idosos e pessoas LGBTQIA+.",
+      "telefone": "100"
+    },
+    {
+      "nome": "SaferNet — Canal de Ajuda",
+      "quando": "Orientação sobre violência e crimes na internet, de forma anônima.",
+      "url": "https://new.safernet.org.br/helpline"
+    },
+    {
+      "nome": "Access Now — Digital Security Helpline",
+      "quando": "Suspeita de spyware de governo ou empresa de vigilância (jornalistas, ativistas, defensores de direitos). Atende em português, de graça.",
+      "url": "https://www.accessnow.org/help/"
+    },
+    {
+      "nome": "Amnesty Security Lab",
+      "quando": "Análise forense de spyware mercenário (Pegasus, Predator e similares) para a sociedade civil.",
+      "url": "https://securitylab.amnesty.org/get-help/"
+    },
+    {
+      "nome": "Coalizão contra o Stalkerware",
+      "quando": "Guia para quem suspeita de app espião instalado por alguém próximo.",
+      "url": "https://stopstalkerware.org/pt-br/"
+    }
+  ],
+  "defensorias": {
+    "AC": [
+      "Acre",
+      "https://defensoria.ac.def.br"
+    ],
+    "AL": [
+      "Alagoas",
+      "https://defensoria.al.def.br"
+    ],
+    "AP": [
+      "Amapá",
+      "https://defensoria.ap.def.br"
+    ],
+    "AM": [
+      "Amazonas",
+      "https://defensoria.am.def.br"
+    ],
+    "BA": [
+      "Bahia",
+      "https://www.defensoria.ba.def.br"
+    ],
+    "CE": [
+      "Ceará",
+      "https://defensoria.ce.def.br"
+    ],
+    "DF": [
+      "Distrito Federal",
+      "https://www.defensoria.df.gov.br"
+    ],
+    "ES": [
+      "Espírito Santo",
+      "https://defensoria.es.def.br"
+    ],
+    "GO": [
+      "Goiás",
+      "https://www.defensoria.go.def.br"
+    ],
+    "MA": [
+      "Maranhão",
+      "https://www.defensoria.ma.def.br"
+    ],
+    "MT": [
+      "Mato Grosso",
+      "https://defensoria.mt.def.br"
+    ],
+    "MS": [
+      "Mato Grosso do Sul",
+      "https://www.defensoria.ms.def.br"
+    ],
+    "MG": [
+      "Minas Gerais",
+      "https://www.defensoria.mg.def.br"
+    ],
+    "PA": [
+      "Pará",
+      "https://www.defensoria.pa.def.br"
+    ],
+    "PB": [
+      "Paraíba",
+      "https://defensoria.pb.def.br"
+    ],
+    "PR": [
+      "Paraná",
+      "https://www.defensoriapublica.pr.def.br"
+    ],
+    "PE": [
+      "Pernambuco",
+      "https://www.defensoria.pe.def.br"
+    ],
+    "PI": [
+      "Piauí",
+      "https://www.defensoria.pi.def.br"
+    ],
+    "RJ": [
+      "Rio de Janeiro",
+      "https://www.defensoria.rj.def.br"
+    ],
+    "RN": [
+      "Rio Grande do Norte",
+      "https://www.defensoria.rn.def.br"
+    ],
+    "RS": [
+      "Rio Grande do Sul",
+      "https://www.defensoria.rs.def.br"
+    ],
+    "RO": [
+      "Rondônia",
+      "https://www.defensoria.ro.def.br"
+    ],
+    "RR": [
+      "Roraima",
+      "https://defensoria.rr.def.br"
+    ],
+    "SC": [
+      "Santa Catarina",
+      "https://www.defensoria.sc.def.br"
+    ],
+    "SP": [
+      "São Paulo",
+      "https://www.defensoria.sp.def.br"
+    ],
+    "SE": [
+      "Sergipe",
+      "https://www.defensoria.se.def.br"
+    ],
+    "TO": [
+      "Tocantins",
+      "https://www.defensoria.to.def.br"
+    ]
+  },
+  "onde_registrar": [
+    "Delegacia de Defesa da Mulher (DEAM) ou qualquer delegacia de polícia civil — muitos estados aceitam boletim de ocorrência online para crimes cometidos pela internet.",
+    "Defensoria Pública do seu estado — orientação jurídica gratuita e pedido de medida protetiva.",
+    "Ministério Público do seu estado, se a polícia não registrar a ocorrência."
+  ],
+  "leis": [
+    {
+      "id": "cp-154a",
+      "titulo": "Invasão de dispositivo informático",
+      "norma": "Código Penal, art. 154-A (Lei 12.737/2012, redação da Lei 14.155/2021)",
+      "texto": "Invadir dispositivo informático de uso alheio, conectado ou não à rede de computadores, com o fim de obter, adulterar ou destruir dados ou informações sem autorização expressa ou tácita do usuário do dispositivo ou de instalar vulnerabilidades para obter vantagem ilícita: Pena - reclusão, de 1 (um) a 4 (quatro) anos, e multa.",
+      "explicacao": "Instalar app espião no celular de outra pessoa sem autorização é crime. Se a invasão dá acesso a conversas privadas ou ao controle remoto do aparelho (§ 3º), a pena sobe para 2 a 5 anos. Também é crime vender ou distribuir programa feito para isso (§ 1º). Em regra, depende de representação da vítima (art. 154-B).",
+      "fonte": "https://normas.leg.br/?urn=urn:lex:br:federal:decreto.lei:1940-12-07;2848",
+      "quando": [
+        "spyware",
+        "mercenario",
+        "controle",
+        "rastros",
+        "apps",
+        "sistema"
+      ]
+    },
+    {
+      "id": "cp-147a",
+      "titulo": "Perseguição (stalking)",
+      "norma": "Código Penal, art. 147-A (Lei 14.132/2021)",
+      "texto": "Perseguir alguém, reiteradamente e por qualquer meio, ameaçando-lhe a integridade física ou psicológica, restringindo-lhe a capacidade de locomoção ou, de qualquer forma, invadindo ou perturbando sua esfera de liberdade ou privacidade. Pena - reclusão, de 6 (seis) meses a 2 (dois) anos, e multa.",
+      "explicacao": "Monitorar alguém repetidamente — localização, mensagens, ligações — é perseguição. A pena aumenta de metade quando é contra mulher por razões da condição de sexo feminino. Depende de representação da vítima.",
+      "fonte": "https://normas.leg.br/?urn=urn:lex:br:federal:decreto.lei:1940-12-07;2848",
+      "quando": [
+        "spyware",
+        "controle",
+        "contas",
+        "telefonia"
+      ]
+    },
+    {
+      "id": "cp-147b",
+      "titulo": "Violência psicológica contra a mulher",
+      "norma": "Código Penal, art. 147-B (Lei 14.188/2021)",
+      "texto": "Causar dano emocional à mulher que a prejudique e perturbe seu pleno desenvolvimento ou que vise a degradar ou a controlar suas ações, comportamentos, crenças e decisões, mediante ameaça, constrangimento, humilhação, manipulação, isolamento, chantagem, ridicularização, limitação do direito de ir e vir ou qualquer outro meio que cause prejuízo à sua saúde psicológica e autodeterminação.",
+      "explicacao": "Controlar a vida da mulher pelo celular pode configurar violência psicológica, com pena de 6 meses a 2 anos se não houver crime mais grave.",
+      "fonte": "https://normas.leg.br/?urn=urn:lex:br:federal:decreto.lei:1940-12-07;2848",
+      "quando": [
+        "spyware",
+        "controle"
+      ]
+    },
+    {
+      "id": "lmp-7",
+      "titulo": "Lei Maria da Penha: vigilância constante é violência",
+      "norma": "Lei 11.340/2006, art. 7º, II",
+      "texto": "a violência psicológica, entendida como qualquer conduta que lhe cause dano emocional [...] mediante ameaça, constrangimento, humilhação, manipulação, isolamento, vigilância constante, perseguição contumaz, insulto, chantagem, violação de sua intimidade [...]",
+      "explicacao": "No contexto doméstico e familiar, “vigilância constante” e “violação da intimidade” são expressamente violência contra a mulher. Isso permite pedir medidas protetivas de urgência (arts. 18 a 24), como proibição de contato.",
+      "fonte": "https://normas.leg.br/?urn=urn:lex:br:federal:lei:2006-08-07;11340",
+      "quando": [
+        "spyware",
+        "controle",
+        "contas"
+      ]
+    },
+    {
+      "id": "l9296-10",
+      "titulo": "Interceptação ilegal de comunicações",
+      "norma": "Lei 9.296/1996, art. 10",
+      "texto": "Constitui crime realizar interceptação de comunicações telefônicas, de informática ou telemática, promover escuta ambiental ou quebrar segredo da Justiça, sem autorização judicial ou com objetivos não autorizados em lei: Pena - reclusão, de 2 (dois) a 4 (quatro) anos, e multa.",
+      "explicacao": "Gravar ligações, ler mensagens em tempo real ou ligar o microfone do celular de alguém sem ordem judicial é crime — inclusive desvio de chamadas e proxies que interceptam a conexão.",
+      "fonte": "https://normas.leg.br/?urn=urn:lex:br:federal:lei:1996-07-24;9296",
+      "quando": [
+        "intercept",
+        "telefonia",
+        "spyware",
+        "mercenario"
+      ]
+    },
+    {
+      "id": "cpp-158a",
+      "titulo": "Cadeia de custódia da prova",
+      "norma": "Código de Processo Penal, arts. 158-A a 158-F (Lei 13.964/2019)",
+      "texto": "Considera-se cadeia de custódia o conjunto de todos os procedimentos utilizados para manter e documentar a história cronológica do vestígio coletado em locais ou em vítimas de crimes, para rastrear sua posse e manuseio a partir de seu reconhecimento até o descarte.",
+      "explicacao": "Por isso o Desgrampa guarda a saída bruta de cada comando com hashes SHA-256 e registra qualquer ação no aparelho. Entregue a pasta inteira, sem editar, e anote quem recebeu, quando e onde.",
+      "fonte": "https://normas.leg.br/?urn=urn:lex:br:federal:decreto.lei:1941-10-03;3689",
+      "quando": []
+    }
+  ],
+  "evidencias": [
+    "Não restaure o celular nem desinstale nada antes de guardar o relatório: a remoção pode apagar a prova e avisar quem instalou.",
+    "Guarde a pasta de evidências do Desgrampa inteira (com o SHA256SUMS.txt) num pendrive ou e-mail seguro que só você acessa.",
+    "Baixe o “Relatório para atendimento” e leve impresso ou em PDF à delegacia, Defensoria ou ao serviço de apoio.",
+    "Anote datas em que alguém teve acesso ao seu celular, pediu sua senha ou sabia de coisas que só estavam nele — a linha do tempo do relatório ajuda.",
+    "Tire prints de mensagens de ameaça ou de controle, mostrando data, hora e o número ou perfil de quem enviou.",
+    "Se for usar outro aparelho para pedir ajuda, prefira um que a pessoa suspeita nunca teve em mãos."
+  ],
+  "termo": [
+    "Autorizo a verificação do meu celular pelo Desgrampa para procurar sinais de espionagem, invasão ou vulnerabilidades.",
+    "Entendo que a verificação apenas consulta informações do aparelho, pelo cabo ou Wi-Fi, e não apaga nem altera nada. Nenhum app será removido sem que eu peça e confirme.",
+    "Entendo que serão coletados dados técnicos do aparelho, como a lista de apps, contas cadastradas, configurações de rede e registros do sistema, e que eles ficam somente neste computador até o fim do atendimento.",
+    "Ao final, recebo o relatório e as evidências (em pendrive, impressos ou da forma que eu escolher), e os dados são apagados deste computador.",
+    "Sei que posso interromper a verificação a qualquer momento e que nenhuma ferramenta garante que um aparelho está livre de monitoramento."
+  ]
+}

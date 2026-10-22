@@ -31,7 +31,16 @@ details{margin:6px 0}summary{cursor:pointer;padding:6px 0}summary b{font-size:15
 details.cat>summary{font-size:16px;border-bottom:1px solid #eee}details.src{margin-left:18px}
 .cnt{font-size:12.5px;color:#5d6675;margin-left:6px}.cnt .c{color:#c62828;font-weight:600}.cnt .a{color:#e86a00;font-weight:600}
 .cnt .m{color:#b58900;font-weight:600}.sug{border:1px solid #f0c9c9;background:#fdf6f6;border-radius:8px;padding:10px 14px;margin:8px 0}
+.toolbar{position:sticky;top:0;background:#fff;padding:10px 0;border-bottom:1px solid #eee;display:flex;gap:10px;align-items:center}
+.toolbar button{font:inherit;padding:7px 14px;border-radius:8px;border:1px solid #2f6fed;background:#2f6fed;color:#fff;cursor:pointer}
+.box{border:1px solid #ccc;border-radius:6px;padding:10px 14px;margin:10px 0}.sig{display:grid;grid-template-columns:1fr 1fr;gap:40px;margin-top:50px}
+.sig div{border-top:1px solid #333;padding-top:4px;font-size:12.5px}dl.kv{display:grid;grid-template-columns:220px 1fr;gap:4px 12px;margin:8px 0}
+dl.kv dt{color:#5d6675}dl.kv dd{margin:0}blockquote{margin:6px 0;padding:6px 12px;border-left:3px solid #ccc;color:#333;font-size:13px}
+@media print{.toolbar{display:none}body{margin:0;max-width:none;font-size:12px}details{display:block}details>summary{list-style:none}
+details:not([open])>*:not(summary){display:block}h2{break-after:avoid}a{color:inherit;text-decoration:none}@page{margin:16mm 14mm}}
 """
+TOOLBAR = ("<div class=toolbar><button onclick='window.print()'>Imprimir ou salvar em PDF</button>"
+           "<span class=muted>No diálogo de impressão, escolha “Salvar como PDF”.</span></div>")
 
 
 # ---------------------------------------------------------------- helpers
@@ -227,22 +236,118 @@ def _apps(r):
           ", ".join(a["reasons"]), a.get("sha256") or "—") for a in r["apps"]])
 
 
+def _vulns(data):
+    v = data.get("vulns")
+    if not v:
+        return ""
+    c, d, exp = v["counts"], v["device"], v["exposure"]
+    out = [f"<h2>Vulnerabilidades conhecidas</h2><p>Patch de segurança <b>{e(d['spl'])}</b> · Android {e(d['android'])}"
+           f"{' (sem suporte)' if d['eol'] else ''} · <b>{c['total']}</b> falhas sem correção ({c['C']} críticas, "
+           f"{c['H']} altas, <b>{c['kev']} exploradas ativamente</b>)"
+           + (f" · {c['likely']} prováveis por a versão não ter mais suporte" if c["likely"] else "")
+           + f". Índice de exposição: <b>{exp['score']}/100 ({e(exp['label'])})</b>.</p>"]
+    active = [f["label"] for f in exp["factors"] if f["active"]]
+    if active:
+        out.append("<p class=muted>Fatores: " + e("; ".join(active)) + ".</p>")
+    kev = [i for i in v["items"] if i["kev"]]
+    top = kev + [i for i in v["items"] if not i["kev"] and i["severity"] == "C"][:20]
+    if top:
+        out.append(table(["CVE", "Gravidade", "Explorada", "Componente", "Corrigida em", "Resumo"],
+                         [(i["cve"], i["severity"], "sim" if i["kev"] else "—", i["component"], i["spl"], i["summary"])
+                          for i in top]))
+    if v["chromium"]:
+        out.append(table(["App", "Versão", "Estável atual", "Exploradas desde então"],
+                         [(x["name"], x["version"], x["stable"], ", ".join(x["exploited"]) or "—") for x in v["chromium"]]))
+    out.append(f"<p class=muted>Base: boletins até {e(v['db']['latest_spl'])}, gerada em {e(v['db']['generated'])}.</p>")
+    return "".join(out)
+
+
 def _notes(r):
     if not r["notes"]:
         return ""
     return "<h2>Limitações desta varredura</h2><ul>" + "".join(f"<li>{e(n)}</li>" for n in r["notes"]) + "</ul>"
 
 
-def render(r):
-    data = r.get("data", {})
-    sections = [
-        _header(r), _categories(r), _suggestions(r), _findings_tree(r), _groups_summary(r), _actions_log(r),
-        "<h2>Dados coletados</h2>", _network_data(data), _phone_data(data), _traces_data(data),
-        _apps(r), _notes(r),
-    ]
+def _page(title, sections, printable):
     return ("<!doctype html><html lang=pt-BR><meta charset=utf-8>"
             "<meta name=viewport content='width=device-width,initial-scale=1'>"
-            f"<title>Relatório Desgrampa</title><style>{CSS}</style><body>"
-            + "\n".join(s for s in sections if s)
-            + "<p class=muted>Gerado pelo Desgrampa. A ausência de achados não prova que o aparelho esteja limpo; "
-              "para suspeita de spyware mercenário, procure análise forense especializada.</p></body></html>")
+            f"<title>{e(title)}</title><style>{CSS}</style><body>"
+            + (TOOLBAR if printable else "")
+            + "\n".join(s for s in sections if s) + "</body></html>")
+
+
+def render(r, printable=False):
+    data = r.get("data", {})
+    sections = [
+        _header(r), _categories(r), _suggestions(r), _findings_tree(r), _groups_summary(r), _vulns(data),
+        _actions_log(r), "<h2>Dados coletados</h2>", _network_data(data), _phone_data(data), _traces_data(data),
+        _apps(r), _notes(r),
+        "<p class=muted>Gerado pelo Desgrampa. A ausência de achados não prova que o aparelho esteja limpo; "
+        "para suspeita de spyware mercenário, procure análise forense especializada.</p>",
+    ]
+    return _page("Relatório Desgrampa", sections, printable)
+
+
+# ---------------------------------------------------------------- versão para atendimento / autoridade
+
+def _kv(rows):
+    return "<dl class=kv>" + "".join(f"<dt>{e(k)}</dt><dd>{v}</dd>" for k, v in rows) + "</dl>"
+
+
+def render_authority(r, evidence, legal):
+    """Relatório factual para delegacia, Defensoria ou serviço de apoio: identificação, método, achados
+    relevantes, integridade (hashes), cadeia de custódia e base legal. `evidence` vem de evidence.integrity()."""
+    d, s = r["device"], r["stats"]
+    relevant = [f for f in r["findings"] if f["severity"] in ("critica", "alta", "media")]
+    categories = {f["category"] for f in relevant}
+    laws = [law for law in legal.get("leis", []) if not law["quando"] or categories & set(law["quando"])]
+    sections = [
+        "<h1>Relatório técnico de verificação de dispositivo móvel</h1>",
+        "<p class=muted>Documento gerado automaticamente pelo Desgrampa a partir de uma verificação somente leitura "
+        "do aparelho. Descreve fatos observados; não é laudo pericial oficial.</p>",
+        "<h2>1. Identificação</h2>",
+        _kv([("Aparelho", e(f"{d.get('manufacturer') or ''} {d.get('model') or ''}".strip())),
+             ("Número de série (adb)", e(d.get("serial"))),
+             ("Sistema", e(f"Android {d.get('android') or '?'} · build {d.get('build') or '?'}")),
+             ("Patch de segurança", e(d.get("security_patch"))),
+             ("Impressão digital do sistema", f"<code>{e(d.get('fingerprint'))}</code>"),
+             ("Início da verificação", e(r["started"])),
+             ("Duração", f"{r['duration_s']} s"),
+             ("Ferramenta", e(f"Desgrampa {evidence.get('version', '')} · modo {r['mode']}")),
+             ("Responsável pela coleta", "______________________________________________"),
+             ("Local", "______________________________________________")]),
+        "<h2>2. Método</h2>",
+        f"<p>O aparelho foi conectado a um computador por depuração USB (ADB), autorizada na tela do próprio aparelho. "
+        f"Foram executados {s['commands']} comandos exclusivamente de consulta (nenhum comando de alteração é usado na "
+        f"varredura). Foram comparados {s['packages']} aplicativos e os dados coletados com "
+        f"{r['iocs']['total']} indicadores públicos de spyware e stalkerware (AssoEchap e mvt-indicators, "
+        f"atualizados em {e(r['iocs']['updated'])})"
+        + (" e o relatório do sistema (bugreport) foi analisado pelo Mobile Verification Toolkit (MVT) da Anistia "
+           "Internacional" if r.get("data", {}).get("mvt") else "")
+        + f". {s['categories_verified']} de {s['categories_total']} áreas puderam ser verificadas.</p>",
+        f"<div class='verdict {e(r['verdict']['code'])}'><strong>Resultado: {e(r['verdict']['label'])}</strong><br>"
+        f"{e(r['verdict']['text'])}</div>",
+        "<h2>3. Fatos relevantes observados</h2>",
+        "".join(finding_html(f) for f in relevant) if relevant else
+        "<p>Nenhum achado de gravidade média ou superior. A ausência de achados não prova que o aparelho esteja "
+        "livre de monitoramento.</p>",
+        _actions_log(r) or "<p class=muted>Nenhuma alteração foi feita no aparelho pelo Desgrampa.</p>",
+        "<h2>4. Integridade dos arquivos</h2>",
+        "<p>A pasta de evidências contém a saída bruta de cada comando, este relatório em JSON e HTML e, na "
+        "varredura completa, o bugreport e os resultados do MVT. O arquivo SHA256SUMS.txt lista o hash SHA-256 "
+        "de cada arquivo; qualquer alteração posterior muda o hash.</p>",
+        _kv([("Pasta de evidências", f"<code>{e(r.get('evidence_dir'))}</code>"),
+             ("SHA-256 do relatorio.json", f"<code>{e(evidence.get('report_sha256'))}</code>"),
+             ("SHA-256 do SHA256SUMS.txt", f"<code>{e(evidence.get('sums_sha256'))}</code>"),
+             ("Arquivos na pasta", str(evidence.get("files", 0)))]),
+        "<h2>5. Cadeia de custódia (CPP, arts. 158-A a 158-F)</h2>",
+        "<p class=muted>Preencha a cada transferência da pasta de evidências ou do aparelho.</p>",
+        table(["Data e hora", "Entregue por", "Recebido por", "Meio (pendrive, e-mail, aparelho)", "Hash conferido?"],
+              [("", "", "", "", "") for _ in range(4)]).replace("<td></td>", "<td>&nbsp;</td>"),
+        "<h2>6. Referências legais</h2>",
+        "".join(f"<div class=box><b>{e(law['titulo'])}</b> — {e(law['norma'])}<blockquote>{e(law['texto'])}</blockquote>"
+                f"<span class=muted>{e(law['explicacao'])}</span></div>" for law in laws),
+        f"<p class=muted>{e(legal.get('aviso', ''))}</p>",
+        "<div class=sig><div>Pessoa atendida</div><div>Responsável pelo atendimento</div></div>",
+    ]
+    return _page("Relatório para atendimento — Desgrampa", sections, printable=True)

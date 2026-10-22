@@ -28,6 +28,7 @@ export async function refreshStatus() {
   if (!app.status) return;
   renderOutdatedBanner();
   renderIocsBanner();
+  renderPrivacyBanner();
   pickDevice();
   await loadDeviceInfo();
   renderPicker();
@@ -70,9 +71,15 @@ function deviceName(d) {
   return app.info[d.serial]?.name || d.model || d.serial;
 }
 
+function needsCase() {
+  const att = app.status?.attendance;
+  return Boolean(att?.enabled && !att.current);
+}
+
 export function setReady() {
   const dev = currentDevice();
-  $("#start").disabled = !dev || dev.state !== "device" || app.scanning;
+  $("#start").disabled = !dev || dev.state !== "device" || app.scanning || needsCase();
+  $("#start").title = needsCase() ? "Abra um atendimento (página Atendimento) antes de iniciar" : "";
 }
 
 // ------------------------------------------------------------ barra lateral, seletor e avisos
@@ -115,6 +122,21 @@ function renderIocsBanner() {
     ausente: "As bases de indicadores ainda não foram baixadas. Abra Configurações › Atualizar bases.",
   }[job?.state];
   setBanner("iocs-banner", "Bases de indicadores", text);
+}
+
+function renderPrivacyBanner() {
+  const st = app.status;
+  $("#nav-atendimento").classList.toggle("hidden", !st.attendance?.enabled);
+  let text = null;
+  if (st.attendance?.enabled) {
+    text = st.attendance.current
+      ? `Atendimento ${st.attendance.current} em andamento. Ao terminar, baixe o pacote e encerre na página Atendimento.`
+      : "Modo atendimento: abra um atendimento com o termo de consentimento (página Atendimento) antes de iniciar a varredura.";
+  } else if (st.privacy?.ephemeral) {
+    text = "Os relatórios desta sessão ficam numa pasta temporária e serão apagados ao fechar o programa. "
+      + "Baixe o pacote de evidências (.zip) do relatório antes de sair.";
+  }
+  setBanner("privacy-banner", st.attendance?.enabled ? "Modo atendimento" : "Modo sem rastros", text);
 }
 
 function renderOutdatedBanner() {

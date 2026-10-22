@@ -5,7 +5,18 @@ Rotas:
     GET  /api/device/<serial>               resumo do aparelho (devinfo)
     GET  /api/scan/<id>                     progresso/resultado de uma varredura
     GET  /api/reports                       relatórios salvos
-    GET  /api/reports/<nome>/relatorio.json|html
+    GET  /api/reports/<nome>/relatorio.json|html   (?ver=1: abre no navegador, pronto para imprimir/PDF)
+    GET  /api/reports/<nome>/atendimento.html      versão para delegacia/Defensoria/serviço de apoio
+    GET  /api/reports/<nome>/relatorio.stix.json   achados e CVEs em STIX 2.1
+    GET  /api/reports/<nome>/vulnerabilidades.csv
+    GET  /api/reports/<nome>/evidencias.zip        pasta de evidências inteira + relatório para atendimento
+    GET  /api/ajuda                         rede de apoio, Defensorias por UF e base legal
+    POST /api/privacy/ephemeral             {on}  modo sem rastros: relatórios numa pasta temporária
+    POST /api/privacy/wipe                  {confirm: "APAGAR"}  apaga todos os relatórios deste computador
+    GET  /api/atendimento                   atendimentos abertos (modo atendimento)
+    POST /api/atendimento/abrir             {consent, name, operator}
+    GET  /api/atendimento/<id>/pacote.zip   evidências + relatórios + termo do atendimento
+    POST /api/atendimento/encerrar          {case}  apaga os dados do atendimento deste computador
     POST /api/scan                          {serial, mode, pc_network}
     POST /api/actions                       {report, package, action, confirm, keep_apk, mercenary_ack}
     POST /api/iocs/update                   baixa as bases de indicadores em segundo plano
@@ -14,25 +25,62 @@ Rotas:
     POST /api/wireless/disconnect           {serial}
 """
 
+import atexit
 import json
 import logging
 import mimetypes
 import re
+import shutil
+import tempfile
 import threading
 import time
 import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from urllib.parse import urlsplit
 
-from . import __version__, actions, adb, bulletins, devinfo, evidence, iocs, oscompat, report, scanner
+from . import (
+    __version__,
+    actions,
+    adb,
+    ajuda,
+    atendimento,
+    bulletins,
+    devinfo,
+    evidence,
+    export,
+    iocs,
+    oscompat,
+    report,
+    scanner,
+)
 from .checks import mvt
-from .paths import WEB_DIR
+from .paths import REPORTS_DIR, WEB_DIR
 
 API_VERSION = 4              # a interface avisa quando o servidor em execução é mais antigo que ela
 DEVICE_INFO_CACHE_S = 20     # evita chamar o adb a cada atualização da tela
 SCAN_MODES = ("rapida", "completa")
 
 log = logging.getLogger(__name__)
+
+
+TEMP_PREFIX = "desgrampa-"
+STALE_TEMP_S = 12 * 3600
+
+
+def purge_stale_tempdirs():
+    """Apaga pastas temporárias de sessões sem rastros que não terminaram direito (ex.: janela fechada no
+    Windows, queda de energia). Só as com mais de 12 h, para não atingir outra instância aberta."""
+    for path in Path(tempfile.gettempdir()).glob(f"{TEMP_PREFIX}*"):
+        try:
+            if path.is_dir() and time.time() - path.stat().st_mtime > STALE_TEMP_S:
+                shutil.rmtree(path, ignore_errors=True)
+        except OSError:
+            pass
+
+
+def attachment(filename):
+    return {"Content-Disposition": f'attachment; filename="{filename}"'}
 
 
 class ApiError(Exception):
@@ -44,9 +92,13 @@ class ApiError(Exception):
 class State:
     """Estado do servidor: bases de indicadores, varreduras em andamento e caches."""
 
-    def __init__(self):
+    def __init__(self, ephemeral=False, attendance=False):
         self.lock = threading.Lock()
         self.scans = {}
+        self.ephemeral_dir = None
+        self.attendance = atendimento.Cases() if attendance else None
+        if ephemeral or attendance:
+            self.set_ephemeral(True)
         self.mvt = None
         self.device_cache = {}
         self.iocs = iocs.load()
@@ -54,6 +106,26 @@ class State:
         self.iocs_job = {"state": "ok" if self.iocs.total_count else "ausente", "error": None}
         if not self.iocs.total_count:
             self.refresh_iocs()   # primeira execução: baixa as bases em segundo plano
+
+    # ---- privacidade
+
+    def set_ephemeral(self, on):
+        """Liga/desliga o modo sem rastros: relatórios novos vão para uma pasta temporária, apagada ao sair."""
+        if on and not self.ephemeral_dir:
+            purge_stale_tempdirs()
+            self.ephemeral_dir = Path(tempfile.mkdtemp(prefix=TEMP_PREFIX))
+            evidence.use_reports_dir(self.ephemeral_dir)
+            atexit.register(self.cleanup)
+        elif not on and self.ephemeral_dir:
+            if self.attendance:
+                raise ApiError(409, "no modo atendimento os relatórios são sempre temporários")
+            shutil.rmtree(self.ephemeral_dir, ignore_errors=True)
+            self.ephemeral_dir = None
+            evidence.use_reports_dir(REPORTS_DIR)
+
+    def cleanup(self):
+        if self.ephemeral_dir:
+            shutil.rmtree(self.ephemeral_dir, ignore_errors=True)
 
     # ---- aparelhos
 
@@ -131,11 +203,18 @@ class Handler(BaseHTTPRequestHandler):
         (re.compile(r"/api/device/([\w.:-]+)"), "get_device"),
         (re.compile(r"/api/scan/(\w+)"), "get_scan"),
         (re.compile(r"/api/reports"), "get_reports"),
-        (re.compile(r"/api/reports/([\w.-]+)/(relatorio\.(?:json|html))"), "get_report"),
+        (re.compile(r"/api/reports/([\w.-]+)/(relatorio\.(?:json|html|stix\.json)|atendimento\.html|vulnerabilidades\.csv)"),
+         "get_report"),
+        (re.compile(r"/api/reports/([\w.-]+)/evidencias\.zip"), "get_evidence_zip"),
+        (re.compile(r"/api/ajuda"), "get_help"),
+        (re.compile(r"/api/atendimento"), "get_attendance"),
+        (re.compile(r"/api/atendimento/(ATD-\d{8}-\d{3})/pacote\.zip"), "get_case_package"),
     ]
     POST_ROUTES = {"/api/scan": "post_scan", "/api/actions": "post_action", "/api/iocs/update": "post_iocs_update",
                    "/api/wireless/pair": "post_wireless_pair", "/api/wireless/connect": "post_wireless_connect",
-                   "/api/wireless/disconnect": "post_wireless_disconnect"}
+                   "/api/wireless/disconnect": "post_wireless_disconnect",
+                   "/api/privacy/ephemeral": "post_ephemeral", "/api/privacy/wipe": "post_wipe",
+                   "/api/atendimento/abrir": "post_case_open", "/api/atendimento/encerrar": "post_case_close"}
 
     @property
     def state(self):
@@ -188,6 +267,8 @@ class Handler(BaseHTTPRequestHandler):
             "adb": adb.adb_path(), "devices": [], "error": None,
             "iocs": {**st.iocs.summary(), "job": st.iocs_job},
             "bulletins": bulletins.summary(st.bulletins),
+            "privacy": {"ephemeral": bool(st.ephemeral_dir)},
+            "attendance": {"enabled": True, "current": st.attendance.current} if st.attendance else {"enabled": False},
             "mvt": st.mvt_status(),
             "running": [{k: j[k] for k in ("id", "serial", "mode", "progress", "step")}
                         for j in st.scans.values() if j["state"] == "running"],
@@ -215,10 +296,50 @@ class Handler(BaseHTTPRequestHandler):
         result = evidence.load(name)
         if not result:
             raise ApiError(404, "relatório não encontrado")
-        if filename.endswith(".html"):
-            disposition = {"Content-Disposition": f'attachment; filename="{name}.html"'}
-            return self._send(200, report.render(result), "text/html; charset=utf-8", disposition)
+        html = "text/html; charset=utf-8"
+        if filename == "relatorio.html":
+            inline = "ver=1" in (urlsplit(self.path).query or "")
+            return self._send(200, report.render(result, printable=inline), html,
+                              None if inline else attachment(f"{name}.html"))
+        if filename == "atendimento.html":
+            return self._send(200, report.render_authority(result, evidence.integrity(name), ajuda.load()), html)
+        if filename == "relatorio.stix.json":
+            return self._send(200, export.stix_json(result), "application/json; charset=utf-8",
+                              attachment(f"{name}.stix.json"))
+        if filename == "vulnerabilidades.csv":
+            return self._send(200, export.vulns_csv(result), "text/csv; charset=utf-8",
+                              attachment(f"{name}_vulnerabilidades.csv"))
         return self._send(200, result)
+
+    def get_help(self):
+        self._send(200, ajuda.load())
+
+    def get_evidence_zip(self, name):
+        if not evidence.load(name):
+            raise ApiError(404, "relatório não encontrado")
+        data = evidence.zip_reports([name], {f"{name}/atendimento.html": self._authority_html(name)})
+        self._send(200, data, "application/zip", attachment(f"{name}_evidencias.zip"))
+
+    def _authority_html(self, name):
+        return report.render_authority(evidence.load(name), evidence.integrity(name), ajuda.load())
+
+    def get_attendance(self):
+        if not self.state.attendance:
+            raise ApiError(404, "inicie com “desgrampa --atendimento” para usar o modo atendimento")
+        self._send(200, self.state.attendance.summary())
+
+    def get_case_package(self, case_id):
+        cases = self._cases()
+        try:
+            data = cases.package(case_id, self._authority_html, ajuda.load())
+        except KeyError:
+            raise ApiError(404, "atendimento não encontrado")
+        self._send(200, data, "application/zip", attachment(f"{case_id}.zip"))
+
+    def _cases(self):
+        if not self.state.attendance:
+            raise ApiError(404, "modo atendimento desligado")
+        return self.state.attendance
 
     # ---- POST
 
@@ -227,7 +348,12 @@ class Handler(BaseHTTPRequestHandler):
         if mode not in SCAN_MODES:
             raise ApiError(400, "modo inválido")
         self.state.ready_device(serial)
-        scan_id = self.state.start_scan(serial, mode, {"pc_network": bool(body.get("pc_network"))})
+        options = {"pc_network": bool(body.get("pc_network"))}
+        if self.state.attendance:
+            if not self.state.attendance.current:
+                raise ApiError(409, "abra um atendimento (com o termo de consentimento) antes da varredura")
+            options["case"] = self.state.attendance.current
+        scan_id = self.state.start_scan(serial, mode, options)
         self._send(200, {"id": scan_id})
 
     def post_action(self, body):
@@ -259,6 +385,39 @@ class Handler(BaseHTTPRequestHandler):
     def post_iocs_update(self, _body):
         self.state.refresh_iocs()
         self._send(202, {"job": self.state.iocs_job})
+
+    def post_ephemeral(self, body):
+        self.state.set_ephemeral(bool(body.get("on")))
+        self._send(200, {"ephemeral": bool(self.state.ephemeral_dir)})
+
+    def post_wipe(self, body):
+        """Apaga todos os relatórios e evidências deste computador (a pasta atual e a permanente)."""
+        if body.get("confirm") != "APAGAR":
+            raise ApiError(400, "digite APAGAR para confirmar")
+        if self.state.scans and any(j["state"] == "running" for j in self.state.scans.values()):
+            raise ApiError(409, "aguarde a varredura em andamento terminar")
+        removed = evidence.wipe() + (evidence.wipe(REPORTS_DIR) if self.state.ephemeral_dir else 0)
+        self.state.scans.clear()
+        self.state.device_cache.clear()
+        self._send(200, {"removed": removed})
+
+    def post_case_open(self, body):
+        try:
+            case = self._cases().open(body.get("consent"), body.get("name"), body.get("operator"))
+        except ValueError as e:
+            raise ApiError(400, str(e))
+        self._send(200, case)
+
+    def post_case_close(self, body):
+        cases = self._cases()
+        case_id = body.get("case") or ""
+        if not atendimento.CASE_RE.fullmatch(case_id) or case_id not in cases.cases:
+            raise ApiError(404, "atendimento não encontrado")
+        if not cases.get(case_id)["delivered"] and not body.get("force"):
+            raise ApiError(409, "baixe o pacote do atendimento antes de encerrar (ou confirme que não quer guardá-lo)")
+        if any(j["state"] == "running" for j in self.state.scans.values()):
+            raise ApiError(409, "aguarde a varredura em andamento terminar")
+        self._send(200, {"removed": cases.close(case_id)})
 
     def post_wireless_pair(self, body):
         adb.pair(body.get("host"), body.get("port"), body.get("code"))
@@ -314,5 +473,5 @@ class Server(ThreadingHTTPServer):
         self.state = state or State()
 
 
-def serve(port=8765):
-    return Server(port)
+def serve(port=8765, ephemeral=False, attendance=False):
+    return Server(port, State(ephemeral=ephemeral, attendance=attendance))

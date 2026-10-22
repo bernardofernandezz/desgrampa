@@ -11,7 +11,9 @@ export async function loadReports() {
   renderSystem();
 }
 
-export async function renderReportsPage(name) {
+export async function renderReportsPage(arg) {
+  const [name, sub, index] = (arg || "").split("/");
+  const focus = sub === "achado" && /^\d+$/.test(index || "") ? { finding: Number(index) } : {};
   await loadReports();
   const list = $("#reports-list");
   const view = $("#report-view");
@@ -21,7 +23,7 @@ export async function renderReportsPage(name) {
     fill(view, el("p", { class: "muted" }, "Carregando…"));
     try {
       const box = el("div");
-      await showReport(box, name);
+      await showReport(box, name, focus);
       fill(view, el("p", {}, el("a", { href: "#relatorios" }, "← Todos os relatórios")), box);
     } catch (e) {
       fill(view, el("p", {}, e.message), el("a", { href: "#relatorios" }, "← Voltar"));
@@ -41,6 +43,8 @@ export async function renderReportsPage(name) {
       el("span", { class: `pill ${VERDICT_PILL[r.verdict?.code] || ""}` }, r.verdict?.label || "?"),
       el("div", { class: "actions" },
         el("button", { onclick: () => go(`#relatorios/${r.name}`) }, "Abrir"),
-        el("a", { href: reportLinks(r.name).html, download: true }, el("button", {}, icon("download", "sm"), "HTML")))))
+        el("a", { href: reportLinks(r.name).html, download: true }, el("button", {}, icon("download", "sm"), "HTML")),
+        el("a", { href: reportLinks(r.name).zip, download: true, title: "Pasta de evidências inteira + relatório para atendimento" },
+          el("button", {}, icon("download", "sm"), "Evidências")))))
       : el("div", { class: "empty" }, "Nenhuma varredura salva ainda.")));
 }
