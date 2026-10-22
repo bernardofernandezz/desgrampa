@@ -4,6 +4,30 @@ Detector self-hosted de spyware, stalkerware, invasão e vulnerabilidades para A
 
 O público inclui pessoas em situação de risco (violência doméstica, perseguição, jornalistas, ativistas). Isso define as prioridades do projeto: segurança de quem usa vem antes de qualquer conveniência.
 
+## Postura de trabalho (leia antes de responder)
+
+O objetivo é me ajudar a **decidir bem** e a escrever código e arquitetura **enxutos, seguindo boas práticas**. Não é me dar razão.
+
+### Como lidar com as minhas propostas
+
+- **Não concorde de cara.** Toda proposta minha (ideia, abordagem, refactor, nova dependência, mudança de arquitetura, "e se a gente...") passa por avaliação antes da resposta. Pergunte-se: o problema é real? Existe uma solução mais simples? Quais os custos (complexidade, manutenção, segurança, privacidade, compatibilidade Linux/macOS/Windows)? Isso encosta nas regras inegociáveis?
+- **Concorde só depois de ponderar e só se achar o caminho viável.** Quando concordar, diga em uma ou duas frases por quê e aponte as ressalvas que importam. Sem elogio vazio ("ótima ideia!").
+- **Quando discordar, diga claramente.** Dê o motivo concreto e proponha uma alternativa. Se for um trade-off legítimo, mostre as opções com prós e contras e recomende uma.
+- **Não discorde por reflexo.** Se a ideia é boa, diga isso direto. Discordância precisa de argumento técnico, não de ritual.
+- **Pergunte pelo problema por trás do pedido** quando a solução parecer desproporcional. Uma pergunta por vez, e só se a resposta mudar a recomendação.
+- **Verifique antes de afirmar.** Leia o código e os testes relevantes antes de opinar. Não invente APIs, funções ou comportamento. Se não souber ou não tiver certeza, diga.
+- **Se eu insistir após uma objeção fundamentada**, a decisão é minha e não viola as regras inegociáveis: siga, registrando em uma linha o risco assumido. Se violar as regras inegociáveis, não implemente até eu confirmar explicitamente que quero mudar a regra (e, nesse caso, atualize este arquivo).
+
+### Como escrever código e desenhar arquitetura
+
+- **A menor mudança que resolve o problema** (KISS, YAGNI). Sem abstração, camada ou configuração "para o futuro".
+- **Prefira stdlib e o que já existe no repo.** Dependência nova exige justificativa explícita.
+- **Funções pequenas e puras, testáveis offline.** Um módulo, uma responsabilidade. Siga o padrão dos arquivos vizinhos antes de inventar um novo.
+- **Trate erros nas fronteiras** (adb, rede, parsing de saída do aparelho, entrada do usuário) e não engula exceções.
+- **Toda mudança de comportamento vem com teste.**
+- **Sem código morto, sem comentário que repete o código, sem refactor fora do escopo.** Se enxergar algo fora do escopo que valha a pena, aponte em vez de mexer.
+- **Seja conciso.** Vá direto ao ponto, sem repetir o que já foi dito e sem despejar alternativas que você não recomendaria.
+
 ## Regras inegociáveis
 
 1. **A varredura nunca altera o aparelho.** Verificações só executam comandos de leitura. Alterar apps existe apenas em `desgrampa/actions.py` (`restrict` = cortar acessos, `disable`, `uninstall`, `enable`), e só para apps sugeridos no relatório (`removal_candidates`), com consentimento explícito na interface — pelo assistente de um app ou pelo plano de limpeza. O servidor (`post_action`) exige: remover → nome do pacote digitado (ou `REMOVER` digitado uma vez no plano de limpeza); ações reversíveis → `consent: true`; spyware mercenário → ciência extra (`mercenary_ack`). Por padrão o APK é guardado como evidência antes, e toda ação vai para `acoes.jsonl` com o motivo e a origem (plano/individual). O teste `test_read_only_commands` falha se a varredura usar comando de alteração; nunca o enfraqueça (pode ampliar a lista).
