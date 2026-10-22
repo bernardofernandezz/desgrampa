@@ -128,7 +128,7 @@ class ActionApiTests(unittest.TestCase):
         reports = Path(self.tmp.name)
         r = scan(FakeDevice(infected=True))
         (reports / "rel_FAKE123").mkdir()
-        (reports / "rel_FAKE123" / "relatorio.json").write_text(json.dumps(r, ensure_ascii=False))
+        (reports / "rel_FAKE123" / "relatorio.json").write_text(json.dumps(r, ensure_ascii=False), encoding="utf-8")
         self.phone = PhoneWithApps({"com.systemservice", "com.vodaservices"})
         self.patches = [mock.patch.object(evidence, "REPORTS_DIR", reports),
                         mock.patch.object(server.adb, "list_devices", return_value=[{"serial": "FAKE123", "state": "device"}]),

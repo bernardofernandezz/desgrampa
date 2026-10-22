@@ -92,7 +92,7 @@ class IosScanTests(unittest.TestCase):
         titles = {f["title"] for f in r["findings"]}
         self.assertIn("Perfil de configuração instalado no iPhone", titles)
         self.assertEqual(r["verdict"]["code"], "alto_risco")
-        self.assertEqual(json.loads((Path(r["evidence_dir"]) / "relatorio.json").read_text())["platform"], "ios")
+        self.assertEqual(json.loads((Path(r["evidence_dir"]) / "relatorio.json").read_text(encoding="utf-8"))["platform"], "ios")
 
     def test_encrypted_backup_needs_password(self):
         backup = make_backup(self.root / "backup", encrypted=True)

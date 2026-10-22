@@ -56,7 +56,8 @@ def status():
 
 def _run(cmd, timeout=60, env=None):
     try:
-        return oscompat.run(cmd, capture_output=True, text=True, errors="replace", timeout=timeout, env=env)
+        return oscompat.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=timeout,
+                            env=env)
     except subprocess.TimeoutExpired:
         raise IosError(f"tempo esgotado: {Path(cmd[0]).name}")
     except OSError as e:

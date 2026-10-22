@@ -82,7 +82,8 @@ def run(ctx):
     cmd.append(str(bugreport))
     env = {**os.environ, "MVT_DATA_FOLDER": str(DATA_DIR / "mvt")}
     try:
-        proc = oscompat.run(cmd, capture_output=True, text=True, errors="replace", timeout=1200, env=env)
+        proc = oscompat.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=1200,
+                            env=env)
     except subprocess.TimeoutExpired:
         raise SkipCheck("o MVT demorou demais (mais de 20 min)")
     (out_dir / "mvt.log").write_text(proc.stdout + "\n" + proc.stderr, encoding="utf-8")

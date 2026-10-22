@@ -26,7 +26,8 @@ def _run(args, timeout=60):
         raise AdbError("adb não encontrado: instale o Android platform-tools (pacote adb ou android-tools)")
     try:
         # o código de saída é tratado abaixo (só "error:" do próprio adb vira exceção)
-        proc = oscompat.run([adb, *args], capture_output=True, text=True, errors="replace", timeout=timeout)
+        proc = oscompat.run([adb, *args], capture_output=True, text=True, encoding="utf-8", errors="replace",
+                            timeout=timeout)
     except subprocess.TimeoutExpired:
         raise AdbError(f"tempo esgotado executando: adb {' '.join(args)}")
     except OSError as e:
