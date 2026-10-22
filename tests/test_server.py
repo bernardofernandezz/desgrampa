@@ -135,6 +135,15 @@ class PrivacyTests(ApiCase):
         self.assertEqual((code, body["removed"]), (200, 1))
         self.assertEqual(evidence.list_reports(), [])
 
+    def test_scan_reports_live_progress_per_check(self):
+        job = self.run_scan()
+        self.assertEqual(job["state"], "done", job.get("error"))
+        self.assertEqual(len(job["checks"]), len(server.scanner.CHECKS))
+        self.assertFalse(any(c["status"] in ("pending", "running") for c in job["checks"]))
+        self.assertEqual(job["found"]["critica"], job["result"]["counts"]["critica"])
+        self.assertTrue(job["alerts"])                                   # aparelho infectado
+        self.assertIsInstance(job["elapsed_s"], int)
+
     def test_ephemeral_mode_keeps_reports_out_of_the_data_folder(self):
         code, body = self.post("/api/privacy/ephemeral", {"on": True})
         self.assertTrue(body["ephemeral"])

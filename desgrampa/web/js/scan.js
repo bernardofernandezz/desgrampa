@@ -1,7 +1,7 @@
 // Início e acompanhamento de uma varredura.
 
 import { $, api, el, fill } from "./dom.js";
-import { app } from "./state.js";
+import { app, SEV_LABEL, SEV_PLURAL } from "./state.js";
 import { go, route } from "./router.js";
 import { refreshStatus, setReady } from "./device.js";
 import { loadReports } from "./reports.js";
@@ -33,15 +33,48 @@ export function showScan(id) {
   setReady();
   $("#result").classList.add("hidden");
   $("#progress").classList.remove("hidden");
-  setProgress(0, "Iniciando");
+  setProgress({ progress: 0, step: "Iniciando" });
   poll(id);
 }
 
-function setProgress(fraction, step) {
-  const pct = `${Math.round(fraction * 100)}%`;
-  $("#bar-fill").style.width = pct;
-  $("#pct").textContent = pct;
-  $("#step").textContent = step;
+const CHECK_STATE = { pending: "aguardando", running: "em andamento", ok: "concluída", skipped: "não executada",
+  error: "falhou" };
+
+const fmtElapsed = (s) => (s < 60 ? `${s}s` : `${Math.floor(s / 60)}min ${String(s % 60).padStart(2, "0")}s`);
+
+// Linha de uma verificação: estado, nome e quantos achados relevantes ela trouxe.
+function checkItem(c) {
+  const relevant = ["critica", "alta", "media"].filter((sv) => c.counts?.[sv]);
+  const worst = relevant[0];
+  return el("li", { class: `ck ck-${c.status}${worst ? ` s-${worst}` : ""}`, title: c.reason || CHECK_STATE[c.status] },
+    el("span", { class: "ck-mark", "aria-hidden": "true" }),
+    el("span", { class: "grow" }, c.name, el("span", { class: "sr-only" }, ` — ${CHECK_STATE[c.status]}`)),
+    worst ? el("span", { class: "cnt" }, relevant.map((sv) => c.counts[sv]).reduce((a, b) => a + b)) : null);
+}
+
+function setProgress(job) {
+  const pct = Math.round(job.progress * 100);
+  $("#bar-fill").style.width = `${pct}%`;
+  $("#bar").setAttribute("aria-valuenow", pct);
+  $("#pct").textContent = `${pct}%`;
+  $("#step").textContent = job.step;
+  $("#elapsed").textContent = job.elapsed_s != null ? fmtElapsed(job.elapsed_s) : "";
+  const checks = job.checks || [];   // a análise de iPhone só informa a etapa
+  const done = checks.filter((c) => !["pending", "running"].includes(c.status)).length;
+  const found = job.found || {};
+  fill($("#live-found"), checks.length ? [
+    el("span", { class: "muted small" }, `${done} de ${checks.length} verificações`),
+    ["critica", "alta", "media"].filter((sv) => found[sv]).map((sv) =>
+      el("span", { class: `cnt s-${sv} small` }, `${found[sv]} ${SEV_PLURAL[sv][found[sv] === 1 ? 0 : 1]}`)),
+  ] : null);
+  fill($("#checklist"), checks.map(checkItem));
+  const alerts = (job.alerts || []).map((a, i) => ({ ...a, i }))   // críticos primeiro, depois os mais recentes
+    .sort((a, b) => (a.severity === b.severity ? b.i - a.i : a.severity === "critica" ? -1 : 1));
+  fill($("#live-alerts"), alerts.length ? el("div", { class: "live-alerts" },
+    el("strong", {}, "Encontrado até agora"),
+    el("ul", {}, alerts.slice(0, 5).map((a) => el("li", { class: `s-${a.severity}` },
+      el("span", { class: "sev" }, SEV_LABEL[a.severity]), a.title, a.package ? el("code", { class: "muted" }, ` ${a.package}`) : null))),
+    alerts.length > 5 ? el("span", { class: "muted small" }, `e mais ${alerts.length - 5}`) : null) : null);
 }
 
 function stopTracking() {
@@ -65,7 +98,7 @@ async function poll(id) {
     return;
   }
 
-  setProgress(job.progress, job.step);
+  setProgress(job);
   if (job.state === "running") {
     setTimeout(() => poll(id), POLL_MS);
     return;

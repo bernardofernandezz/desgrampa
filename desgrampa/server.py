@@ -57,7 +57,7 @@ from . import (
     report,
     scanner,
 )
-from .checks import mvt
+from .checks import SEVERITIES, mvt
 from .paths import REPORTS_DIR, WEB_DIR
 
 API_VERSION = 4              # a interface avisa quando o servidor em execução é mais antigo que ela
@@ -155,7 +155,9 @@ class State:
 
     def start_scan(self, serial, mode, options):
         job = {"id": uuid.uuid4().hex[:12], "state": "running", "progress": 0.0, "step": "Iniciando",
-               "result": None, "error": None, "serial": serial, "mode": mode}
+               "result": None, "error": None, "serial": serial, "mode": mode, "started_at": time.time(),
+               "checks": [{"name": c.NAME, "category": c.CATEGORY, "status": "pending"} for c in scanner.CHECKS],
+               "found": dict.fromkeys(SEVERITIES, 0), "alerts": []}
         with self.lock:
             if self.is_scanning(serial):
                 raise ApiError(409, "Já existe uma varredura em andamento neste aparelho.")
@@ -163,11 +165,23 @@ class State:
 
         def progress(fraction, step):
             job["progress"], job["step"] = round(fraction, 3), step
+            for c in job["checks"]:
+                if c["name"] == step and c["status"] == "pending":
+                    c["status"] = "running"
+
+        def on_check(index, status, found):
+            counts = {s: sum(f.severity == s for f in found) for s in SEVERITIES}
+            job["checks"][index] = {**job["checks"][index], "status": status["status"],
+                                    "reason": status["reason"], "counts": counts}
+            for s, n in counts.items():
+                job["found"][s] += n
+            job["alerts"] += [{"severity": f.severity, "title": f.title, "package": f.package}
+                              for f in found if f.severity in ("critica", "alta")]
 
         def worker():
             try:
                 job["result"] = scanner.run_scan(adb.Device(serial), self.iocs, mode, progress, options,
-                                                 bulletins=self.bulletins)
+                                                 bulletins=self.bulletins, on_check=on_check)
                 job.update(state="done", progress=1.0, step="Concluído")
             except Exception as e:
                 log.exception("varredura de %s falhou", serial)
@@ -318,7 +332,10 @@ class Handler(BaseHTTPRequestHandler):
         job = self.state.scans.get(scan_id)
         if not job:
             raise ApiError(404, "varredura não encontrada")
-        self._send(200, {k: job[k] for k in ("id", "state", "progress", "step", "result", "error", "mode")})
+        live = {k: job[k] for k in ("checks", "found", "alerts") if k in job}
+        if "started_at" in job:
+            live["elapsed_s"] = round(time.time() - job["started_at"])
+        self._send(200, {**{k: job[k] for k in ("id", "state", "progress", "step", "result", "error", "mode")}, **live})
 
     def get_reports(self):
         self._send(200, evidence.list_reports())

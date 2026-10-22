@@ -172,7 +172,29 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 @media (prefers-reduced-motion: reduce) { .spinner::after { animation-duration: 3s; } }
 .bar { height: 6px; background: var(--surface-2); border-radius: 99px; overflow: hidden; }
 #bar-fill { height: 100%; width: 0; background: var(--accent); border-radius: 99px; transition: width .4s ease; }
-.progress-card p { margin: 14px 0 0; }
+.progress-card > p { margin: 14px 0 0; }
+.live-found { display: flex; flex-wrap: wrap; gap: 12px; align-items: baseline; margin: 12px 0 4px; font-variant-numeric: tabular-nums; }
+.checklist { list-style: none; padding: 0; margin: 10px 0 0; display: grid; gap: 2px 18px;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); font-size: 13px; }
+.ck { display: flex; align-items: center; gap: 9px; padding: 4px 0; color: var(--muted); min-width: 0; }
+.ck .grow { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ck-mark { width: 16px; height: 16px; flex: none; border-radius: 50%; border: 1.5px solid var(--border);
+  display: grid; place-items: center; font-size: 10px; font-weight: 700; line-height: 1; }
+.ck-running { color: var(--text); font-weight: 600; }
+.ck-running .ck-mark { border-color: var(--accent); border-top-color: transparent; animation: spin .8s linear infinite; }
+.ck-ok { color: var(--text); }
+.ck-ok .ck-mark { background: var(--ok); border-color: var(--ok); color: var(--surface); }
+.ck-ok .ck-mark::after { content: "✓"; }
+.ck-ok[class*=" s-"] .ck-mark { background: var(--sev); border-color: var(--sev); }
+.ck-ok[class*=" s-"] .ck-mark::after { content: "!"; }
+.ck-skipped .ck-mark::after { content: "–"; }
+.ck-error .ck-mark { border-color: var(--high); color: var(--high); }
+.ck-error .ck-mark::after { content: "!"; }
+.ck .cnt { font-size: 12px; }
+.live-alerts { margin-top: 14px; padding: 12px 14px; border-radius: 10px; background: var(--crit-bg);
+  border: 1px solid color-mix(in srgb, var(--crit) 35%, transparent); }
+.live-alerts ul { list-style: none; margin: 6px 0 0; padding: 0; font-size: 13.5px; display: grid; gap: 4px; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
 /* ---- ajuda ---- */
 .help-card { display: flex; gap: 18px; align-items: flex-start; }
