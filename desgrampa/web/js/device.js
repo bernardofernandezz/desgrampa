@@ -1,9 +1,10 @@
 // Status do servidor e do aparelho: seletor, cartão do aparelho e página de dispositivos.
 
 import { $, api, el, fill, fmtDate, icon, num } from "./dom.js";
-import { adbHint, API_VERSION, app, INSTALL_HINTS } from "./state.js";
+import { adbHint, API_VERSION, app, INSTALL_HINTS, VERDICT_PILL } from "./state.js";
 import { go } from "./router.js";
 import { resumeRunning } from "./scan.js";
+import { relTime, reportsOf, sevBar } from "./history.js";
 
 const INFO_TTL_MS = 20000;        // relê os dados do aparelho a cada 20 s
 const INFO_RETRY_MS = 5000;       // depois de uma falha, tenta de novo em 5 s
@@ -87,7 +88,14 @@ export function setReady() {
 export function renderSystem() {
   $("#sys-status").classList.toggle("off", !app.status);
   $("#sys-text").textContent = app.status ? "Sistema online" : "Servidor offline";
-  $("#last-scan").textContent = app.reports[0] ? fmtDate(app.reports[0].started) : "nenhuma ainda";
+  const last = [...app.reports].sort((a, b) => String(b.started).localeCompare(String(a.started)))[0];
+  const link = $("#last-scan");
+  link.textContent = last ? fmtDate(last.started) : "nenhuma ainda";
+  link.href = last ? `#relatorios/${last.name}` : "#varredura";
+  link.title = last ? `${last.device || last.serial} · ${last.verdict?.label || ""}` : "";
+  const count = $("#nav-reports-count");
+  count.textContent = app.reports.length || "";
+  count.classList.toggle("hidden", !app.reports.length);
 }
 
 function renderPicker() {
@@ -264,7 +272,22 @@ function renderDeviceCard() {
         bat && bat.level < LOW_BATTERY && !bat.charging ? "warn" : ""],
     ]),
     info ? deviceDetails(info) : null,
+    deviceHistory(dev.serial),
   );
+}
+
+// Últimas varreduras deste aparelho, para acompanhar a evolução e abrir cada relatório.
+function deviceHistory(serial) {
+  const list = reportsOf(serial);
+  return el("div", { class: "device-history" },
+    el("div", { class: "dh-head" }, el("strong", {}, "Histórico deste aparelho"),
+      list.length > 3 ? el("a", { href: "#relatorios", class: "small" }, `Ver todas (${list.length})`) : null),
+    list.length ? el("ul", {}, list.slice(0, 3).map((r) => el("li", {},
+      el("a", { href: `#relatorios/${r.name}` },
+        el("span", { class: "grow dh-when" }, el("span", {}, fmtDate(r.started)), el("span", { class: "muted small" }, relTime(r.started))),
+        sevBar(r.counts),
+        el("span", { class: `pill ${VERDICT_PILL[r.verdict?.code] || ""}` }, r.verdict?.label || "?")))))
+      : el("p", { class: "muted small" }, "Nenhuma varredura deste aparelho ainda. Depois da primeira, as próximas mostram o que mudou."));
 }
 
 // ------------------------------------------------------------ página de dispositivos
