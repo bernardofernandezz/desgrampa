@@ -1,6 +1,5 @@
 """Processos em execução comparados com as bases de spyware e locais suspeitos."""
 
-import re
 
 from ..context import parse_ps
 from . import Finding, ioc_category
@@ -8,6 +7,18 @@ from .packages import visible_monitoring_app
 
 NAME = "Processos em execução"
 CATEGORY = "spyware"
+
+
+SYSTEM_BIN_DIRS = "/system/bin /system_ext/bin /vendor/bin /system/bin/hw /vendor/bin/hw /product/bin"
+
+
+def parse_ls_dirs(out):
+    """Saída de `ls dir1 dir2...` -> nomes de arquivo (ignora os cabeçalhos "dir:" e linhas vazias)."""
+    return {line.strip() for line in out.splitlines() if line.strip() and not line.rstrip().endswith(":")}
+
+
+def system_binaries(ctx):
+    return ctx._cached("system_bins", lambda: parse_ls_dirs(ctx.try_sh(f"ls {SYSTEM_BIN_DIRS} 2>/dev/null")))
 
 
 def run(ctx):
@@ -19,18 +30,13 @@ def run(ctx):
         return findings
 
     reported = set()
-    system_bins = {}
 
     def is_system_binary(proc):
         # vários indicadores de processo vêm de ataques a iPhone; nomes como "gatekeeperd" também
         # existem como serviços legítimos do Android. Se o binário está na partição do sistema, ignoramos.
-        if not re.fullmatch(r"[\w.@+-]+", proc):
-            return False   # nome estranho vindo do aparelho: não vai para o shell
-        if proc not in system_bins:
-            out = ctx.try_sh(f"ls /system/bin/{proc} /system_ext/bin/{proc} /vendor/bin/{proc} "
-                             f"/system/bin/hw/{proc} /vendor/bin/hw/{proc} 2>/dev/null")
-            system_bins[proc] = bool(out.strip())
-        return system_bins[proc]
+        # Lista as pastas em vez de consultar o arquivo: em vários aparelhos (ex.: Xiaomi) o SELinux nega
+        # o stat de /system/bin/<serviço> ao shell, mas permite listar a pasta.
+        return proc in system_binaries(ctx)
 
     for user, pid, name in procs:
         base = name.split(":")[0]

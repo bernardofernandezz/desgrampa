@@ -17,7 +17,7 @@ from ..adb import AdbError
 from ..context import SkipCheck
 from ..paths import DATA_DIR, REPO_DIR
 from ..util import QUOTED_PACKAGE_RE
-from . import Finding
+from . import Finding, ioc_category
 from .packages import visible_monitoring_app
 
 NAME = "Análise forense MVT (Anistia Internacional)"
@@ -183,7 +183,8 @@ def _finding_for(ctx, key, group):
         f"Alerta do MVT (módulo {', '.join(sorted(group['modules']))}){repeated}{when}{indicator_txt}{note}{original}",
         "Alertas do MVT devem ser confirmados por especialista. Não apague nada: envie a pasta de evidências "
         "para a Access Now Helpline (accessnow.org/help) ou o Amnesty Security Lab.",
-        package=pkg, family=match.family if match else None)
+        package=pkg, family=match.family if match else None,
+        category=ioc_category(match, "mercenario") if match else None)
 
 
 def parse_alerts(ctx, out_dir):

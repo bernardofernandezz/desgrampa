@@ -6,6 +6,7 @@ Todo texto vindo do aparelho passa por e() (escape de HTML).
 
 from html import escape
 
+from . import actions, explain
 from .checks import SEVERITY_LABELS
 
 STATUS_LABELS = {"critica": "Crítico", "alta": "Suspeito", "media": "Atenção", "baixa": "Baixo risco",
@@ -31,6 +32,12 @@ details{margin:6px 0}summary{cursor:pointer;padding:6px 0}summary b{font-size:15
 details.cat>summary{font-size:16px;border-bottom:1px solid #eee}details.src{margin-left:18px}
 .cnt{font-size:12.5px;color:#5d6675;margin-left:6px}.cnt .c{color:#c62828;font-weight:600}.cnt .a{color:#e86a00;font-weight:600}
 .cnt .m{color:#b58900;font-weight:600}.sug{border:1px solid #f0c9c9;background:#fdf6f6;border-radius:8px;padding:10px 14px;margin:8px 0}
+.areas{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:8px}
+.area{border:1px solid #e3e6ea;border-left:5px solid var(--c,#8a94a3);border-radius:8px;padding:8px 12px;break-inside:avoid;background:#fff!important}.area.st-critica,.area.st-alta{--c:#c62828}.area.st-media{--c:#c99a00}.area.st-ok,.area.st-baixa{--c:#2e7d32}.area.st-critica .state,.area.st-alta .state{color:#c62828}
+.area ul{margin:6px 0 0;padding-left:18px;font-size:13px}.area p{margin:6px 0 0;font-size:13px}
+.area-head{display:flex;justify-content:space-between;gap:8px}.state{font-size:12px;font-weight:700;text-transform:uppercase}
+.sug .cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:4px 20px}.sug ul{margin:4px 0;padding-left:18px}
+.sug p{margin:6px 0}ol.steps li{margin:6px 0}h1.tech{margin-top:42px;padding-top:14px;border-top:3px solid #1d2330;font-size:20px}
 .toolbar{position:sticky;top:0;background:#fff;padding:10px 0;border-bottom:1px solid #eee;display:flex;gap:10px;align-items:center}
 .toolbar button{font:inherit;padding:7px 14px;border-radius:8px;border:1px solid #2f6fed;background:#2f6fed;color:#fff;cursor:pointer}
 .box{border:1px solid #ccc;border-radius:6px;padding:10px 14px;margin:10px 0}.sig{display:grid;grid-template-columns:1fr 1fr;gap:40px;margin-top:50px}
@@ -78,13 +85,12 @@ def finding_html(f):
 # ---------------------------------------------------------------- seções
 
 def _header(r):
-    d, v, s, iocs = r["device"], r["verdict"], r["stats"], r["iocs"]
+    d, s, iocs = r["device"], r["stats"], r["iocs"]
     out = [
         "<h1>Relatório de varredura</h1>",
         f"<div class=muted>{e(d.get('manufacturer'))} {e(d.get('model'))} · {e(system_label(d))} · "
         f"serial {e(d.get('serial'))} · {e(r['started'])} · varredura "
         f"{e(r['mode'])} ({r['duration_s']} s)</div>",
-        f"<div class='verdict {e(v['code'])}'><strong>{e(v['label'])}</strong><br>{e(v['text'])}</div>",
         f"<p class=muted>{s['categories_verified']}/{s['categories_total']} áreas verificadas · "
         f"{s['checks_run']}/{s['checks_total']} verificações executadas · {s['commands']} comandos coletados · "
         f"{s['packages']} apps ({s['third_party']} do usuário, {s['sideloaded']} fora da loja) · "
@@ -106,22 +112,83 @@ def _categories(r):
             + "".join(rows) + "</table>")
 
 
+def _summary(r):
+    """Resumo em linguagem simples: veredito e o que cada área respondeu."""
+    v = r["verdict"]
+    out = [f"<div class='verdict {e(v['code'])}'><strong style='font-size:17px'>{e(v['label'])}</strong>"
+           f"<br>{e(explain.VERDICT_PLAIN.get(v['code'], v['text']))}</div>",
+           "<h2>Em poucas palavras</h2><div class=areas>"]
+    for c in r["categories"]:
+        name, question = explain.AREAS.get(c["id"], (c["title"], c["description"]))
+        found = [f for f in r["findings"] if f["category"] == c["id"] and f["severity"] not in ("info", "baixa")]
+        if found:
+            body = "<ul>" + "".join(f"<li><b>{e(explain.SEVERITY_PLAIN[f['severity']])}:</b> {e(f['title'])}</li>"
+                                    for f in found[:3]) + (f"<li class=muted>e mais {len(found) - 3}</li>"
+                                                           if len(found) > 3 else "") + "</ul>"
+        elif c["status"] == "nao_verificado":
+            body = "<p class=muted>Não foi possível verificar nesta varredura.</p>"
+        else:
+            body = "<p class=muted>Nada preocupante encontrado.</p>"
+        out.append(f"<div class='area st-{e(c['status'])}'><div class=area-head><b>{e(name)}</b>"
+                   f"<span class=state>{e(explain.AREA_STATE[c['status']])}</span></div>"
+                   f"<div class=muted>{e(question)}</div>{body}</div>")
+    out.append("</div>")
+    return "".join(out)
+
+
+def _dossier_html(c, action):
+    d = c.get("explain") or {}
+    why = "".join(f"<li>{e(x)}</li>" for x in d.get("why", c["reasons"]))
+    can_do = "".join(f"<li><b>{e(x['theme'])}:</b> {e(x['text'])}</li>" for x in d.get("can_do", []))
+    rec = d.get("recommendation") or {}
+    done = (f"<p><b>Já feito:</b> {e(actions.ACTIONS.get(action['action'], action['action']))} em {e(action['time'])}."
+            f" {e(action.get('message'))}</p>") if action else ""
+    return (f"<div class=sug><div><b>{e(c['family'] or c['package'])}</b> <code>{e(c['package'])}</code> "
+            f"<span class=cnt>{counts_line(c['counts'])}</span></div>"
+            f"<p><b>{e(d.get('label', 'App suspeito'))}.</b> {e(d.get('what', ''))}"
+            f" <span class=muted>Certeza {e(d.get('confidence', 'média'))}.</span></p>"
+            f"<div class=cols><div><b>Por que foi apontado</b><ul>{why}</ul></div>"
+            + (f"<div><b>O que ele consegue fazer</b><ul>{can_do}</ul></div>" if can_do else "") + "</div>"
+            + (f"<p class=rec><b>Recomendação: {e(actions.ACTIONS.get(rec['action'], ''))}.</b> {e(rec['text'])}</p>"
+               if rec.get("text") else "")
+            + done + "</div>")
+
+
 def _suggestions(r):
     candidates = r.get("removal_candidates", [])
     if not candidates:
         return ""
     done = {a["package"]: a for a in r.get("actions", []) if a.get("status") == "ok"}
-    out = ["<h2>Ações sugeridas</h2><p class=muted>Apps com achado crítico ou de spyware/malware. Nada é removido "
-           "automaticamente: a remoção só acontece se você confirmar no app.</p>"]
-    for c in candidates:
-        action = done.get(c["package"])
-        out.append(f"<div class=sug><b>{e(c['family'] or c['package'])}</b> <code>{e(c['package'])}</code>"
-                   f"<span class=cnt>{counts_line(c['counts'])}</span><br>"
-                   f"<span class=muted>{e('; '.join(c['reasons']))}</span>"
-                   + (f"<br><b>Ação realizada:</b> {e(action['action'])} em {e(action['time'])}" if action else "")
-                   + ("<br><b>Spyware mercenário:</b> não remova antes de uma análise forense." if c["mercenary"] else "")
-                   + "</div>")
+    threats = [c for c in candidates if c.get("level", "ameaca") == "ameaca"]
+    review = [c for c in candidates if c.get("level", "ameaca") != "ameaca"]
+    out = ["<h2>Apps suspeitos: o que são e por que foram apontados</h2><p class=muted>Para cada app: o que é, por que "
+           "foi apontado, o que consegue fazer no celular e o que recomendamos. Nada é alterado automaticamente: "
+           "só acontece se você confirmar no Desgrampa.</p>"]
+    out += [_dossier_html(c, done.get(c["package"])) for c in threats]
+    if review:
+        out.append("<h3>Apps para revisar</h3><p class=muted>Têm acessos perigosos, mas podem ser apps que você usa. "
+                   "Confira se reconhece cada um.</p>")
+        out += [_dossier_html(c, done.get(c["package"])) for c in review]
     return "".join(out)
+
+
+def _next_steps(r):
+    steps = []
+    if r.get("removal_candidates") or r["counts"]["critica"]:
+        steps.append(("Antes de apagar qualquer coisa, pense na sua segurança",
+                      "Quem instalou um app espião pode perceber a remoção. Guarde este relatório e, se possível, "
+                      "procure apoio (Ligue 180, Defensoria, Access Now Helpline)."))
+    seen = set()
+    for f in r["findings"]:
+        if f["severity"] in ("critica", "alta") and f["recommendation"] and f["recommendation"] not in seen:
+            seen.add(f["recommendation"])
+            steps.append((f["title"], f["recommendation"]))
+        if len(steps) >= 5:
+            break
+    steps.append(("Desligue a Depuração USB", "Em Configurações › Opções do desenvolvedor, desligue a Depuração USB e "
+                  "toque em “Revogar autorizações”."))
+    return ("<h2>O que fazer agora</h2><ol class=steps>"
+            + "".join(f"<li><b>{e(t)}</b><br><span class=muted>{e(x)}</span></li>" for t, x in steps) + "</ol>")
 
 
 def _findings_tree(r):
@@ -153,10 +220,14 @@ def _groups_summary(r):
 def _actions_log(r):
     if not r.get("actions"):
         return ""
-    return "<h2>Ações realizadas no aparelho</h2>" + table(
-        ["Quando", "App", "Ação", "Resultado", "Cópia do APK"],
-        [(a["time"], a["package"], a["action"], a.get("message"),
-          ", ".join(s["file"] for s in a.get("saved", [])) or "—") for a in r["actions"]])
+    via = {"plano": "plano de limpeza", "individual": "ação individual"}
+    return ("<h2>Alterações feitas no aparelho pelo Desgrampa</h2><p class=muted>Cada alteração foi autorizada "
+            "explicitamente pelo usuário na interface e fica registrada com o motivo.</p>" + table(
+                ["Quando", "App", "Ação", "Motivo", "Resultado", "Cópia do APK"],
+                [(a["time"], a["package"],
+                  actions.ACTIONS.get(a["action"], a["action"]) + (f" ({via[a['via']]})" if a.get("via") in via else ""),
+                  a.get("reason") or "—", a.get("message"),
+                  ", ".join(x["file"] for x in a.get("saved", [])) or "—") for a in r["actions"]]))
 
 
 def _network_data(data):
@@ -285,8 +356,10 @@ def _page(title, sections, printable):
 def render(r, printable=False):
     data = r.get("data", {})
     sections = [
-        _header(r), _categories(r), _suggestions(r), _findings_tree(r), _groups_summary(r), _vulns(data),
-        _actions_log(r), "<h2>Dados coletados</h2>", _network_data(data), _phone_data(data), _traces_data(data),
+        _header(r), _summary(r), _suggestions(r), _next_steps(r), _actions_log(r),
+        "<h1 class=tech>Detalhes técnicos</h1><p class=muted>Para especialistas: verificações, achados completos, "
+        "dados coletados e limitações.</p>",
+        _categories(r), _findings_tree(r), _groups_summary(r), _vulns(data), "<h2>Dados coletados</h2>", _network_data(data), _phone_data(data), _traces_data(data),
         _apps(r), _notes(r),
         "<p class=muted>Gerado pelo Desgrampa. A ausência de achados não prova que o aparelho esteja limpo; "
         "para suspeita de spyware mercenário, procure análise forense especializada.</p>",

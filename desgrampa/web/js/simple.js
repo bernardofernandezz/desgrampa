@@ -58,6 +58,8 @@ function areaIcon(name) {
 }
 
 const RANK = { critica: 0, alta: 1, media: 2, baixa: 3, info: 4 };
+// Gravidade em palavras do dia a dia (igual a explain.SEVERITY_PLAIN)
+const PLAIN_SEV = { critica: "Grave", alta: "Preocupante", media: "Vale conferir", baixa: "Pouco preocupante", info: "Informativo" };
 
 // Até `limit` passos, do mais grave para o menos grave, sem repetir a mesma recomendação.
 export function nextSteps(r, limit = 5) {
@@ -99,7 +101,8 @@ function exposureGauge(exp) {
   );
 }
 
-export function simpleView(r, openArea) {
+// `threats`: painel de ameaças (actions.js), mostrado logo abaixo do semáforo.
+export function simpleView(r, openArea, threats = null) {
   const [color, label, text] = LIGHT[r.verdict.code] || LIGHT.ok;
   const exp = r.data?.vulns?.exposure;
   const byCat = (cid) => r.findings.filter((f) => f.category === cid && f.severity !== "info");
@@ -113,6 +116,7 @@ export function simpleView(r, openArea) {
           "Isso não garante que o celular esteja limpo: nenhuma ferramenta consegue provar isso. Spyware muito "
           + "sofisticado pode não deixar rastros visíveis pelo cabo.") : null),
       exposureGauge(exp)),
+    threats,
     el("h3", {}, "O que fazer agora"),
     el("ol", { class: "next-steps" }, nextSteps(r).map((s) => el("li", { class: `s-${s.sev}` },
       el("strong", {}, s.title), el("span", {}, s.text)))),
@@ -126,7 +130,7 @@ export function simpleView(r, openArea) {
           el("span", { class: "muted small" }, question)), el("span", { class: `pill ${cls}` }, state)),
         el("div", { class: "area-body" },
           el("p", { class: "small" }, el("strong", {}, "Por que isso importa: "), c.description),
-          found.length ? el("ul", { class: "small" }, found.slice(0, 4).map((f) => el("li", {}, f.title)),
+          found.length ? el("ul", { class: "small" }, found.slice(0, 4).map((f) => el("li", {}, el("strong", {}, `${PLAIN_SEV[f.severity]}: `), f.title)),
             found.length > 4 ? el("li", { class: "muted" }, `e mais ${found.length - 4}`) : null)
             : el("p", { class: "small muted" }, c.status === "nao_verificado"
               ? `Não verificado: ${c.checks.map((x) => x.reason).filter(Boolean).join("; ") || "sem dados"}.`

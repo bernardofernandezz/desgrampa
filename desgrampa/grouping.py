@@ -6,6 +6,7 @@ versões anteriores do app.
 
 import re
 
+from . import explain
 from .checks import CATEGORIES, SEVERITIES
 from .util import QUOTED_PACKAGE_RE
 
@@ -88,9 +89,19 @@ def build_groups(findings):
     return groups, tree
 
 
+def _mercenary(items):
+    """Spyware mercenário? Relatórios antigos punham todo alerta do MVT em "mercenario", inclusive de stalkerware
+    comum (ex.: Life360); se outra verificação já classificou a família como stalkerware, ela prevalece."""
+    stalkerware = any(f.get("family") and f.get("category") == "spyware" for f in items)
+    return not stalkerware and any(f.get("category") == "mercenario" and f["severity"] in ("critica", "alta")
+                                   for f in items)
+
+
 def removal_candidates(result):
-    """Apps que o app SUGERE remover: instalados pelo usuário e com achado crítico ou de spyware/malware.
-    Nada é removido sem confirmação manual."""
+    """Apps instalados pelo usuário sobre os quais o app oferece agir (remover, desativar, cortar acessos).
+
+    level "ameaca": achado crítico ou de spyware/malware; level "revisar": achado alto em outra área (ex.:
+    acessibilidade ou leitura de notificações por app desconhecido). Nada é feito sem confirmação manual."""
     findings = result.get("findings", [])
     apps = {a["package"]: a for a in result.get("apps", [])}
     extra = {}
@@ -112,7 +123,8 @@ def removal_candidates(result):
             continue   # app do sistema ou que não está mais instalado
         spy = [f for f in items if f.get("category") in SPYWARE_CATEGORIES and f["severity"] in ("critica", "alta")]
         critical = [f for f in items if f["severity"] == "critica"]
-        if not spy and not critical:
+        high = [f for f in items if f["severity"] == "alta"]
+        if not spy and not critical and not high:
             continue
         counts, worst = _summary(items)
         family = next((_family(f) for f in items if _family(f)), None)
@@ -121,16 +133,19 @@ def removal_candidates(result):
             "package": pkg,
             "user": 0 if pkg in apps else extra[pkg],
             "family": family,
+            "level": "ameaca" if spy or critical else "revisar",
             "worst": worst,
             "counts": counts,
-            "mercenary": any(f.get("category") == "mercenario" for f in items),
+            "mercenary": _mercenary(items),
             "reasons": list(dict.fromkeys(f["title"] for f in sorted(items, key=lambda f: SEV_RANK[f["severity"]])))[:5],
             "device_admin": pkg in admins,
             "admin_components": [c for c in components if c.startswith(pkg + "/")],
             "sideloaded": app.get("sideloaded"),
             "installer": app.get("installer"),
         })
-    candidates.sort(key=lambda c: (SEV_RANK[c["worst"]], -c["counts"]["critica"], c["package"]))
+    for c in candidates:
+        c["explain"] = explain.dossier(c, by_pkg[c["package"]], apps.get(c["package"]))
+    candidates.sort(key=lambda c: (c["level"] != "ameaca", SEV_RANK[c["worst"]], -c["counts"]["critica"], c["package"]))
     return candidates
 
 

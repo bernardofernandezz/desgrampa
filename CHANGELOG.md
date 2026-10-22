@@ -3,6 +3,36 @@
 Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/); versões seguem
 [SemVer](https://semver.org/lang/pt-BR/).
 
+## [Não lançado]
+
+### Adicionado
+- **Progresso ao vivo da varredura**: lista das 21 verificações com estado (aguardando, em andamento,
+  concluída, não executada, falhou), achados por verificação, tempo decorrido e o que já foi encontrado
+  (críticos primeiro).
+- **Cortar acessos**: nova ação que tira acessibilidade, leitura de notificações, permissões perigosas
+  (SMS, ligações, microfone, câmera, localização…), gravação/sobreposição de tela e execução em segundo
+  plano, e para o app — sem desinstalar, preservando as evidências. **Reativar** desfaz uma desativação.
+- **Apps para revisar**: apps instalados pelo usuário com achado alto (ex.: acessibilidade) também podem
+  ser tratados, separados das ameaças confirmadas.
+- **Explicação de cada app suspeito** (`explain.py`): o que é (stalkerware, spyware mercenário, app de
+  monitoramento…), por que foi apontado, o que ele consegue fazer no celular (por tema: mensagens, tela,
+  localização…), grau de certeza e a ação recomendada com o motivo.
+- **Plano de limpeza**: o Desgrampa propõe uma ação para cada app (pré-marcando só espionagem clara, nunca
+  spyware mercenário), o usuário revisa, autoriza (digitando REMOVER se houver remoções) e acompanha a
+  execução item a item. Cada ação fica registrada com o motivo e a origem (plano ou individual).
+
+### Alterado
+- **Relatório HTML mais fácil de entender**: começa com o resumo em linguagem simples, as 13 áreas como
+  perguntas do dia a dia, os apps suspeitos explicados, o que fazer agora e as alterações feitas (com o
+  motivo); os detalhes técnicos vêm depois. Gravidade em palavras ("Grave", "Preocupante"…).
+- Alertas do MVT ligados a stalkerware comum (ex.: Life360) não são mais classificados como spyware
+  mercenário (também corrigido na leitura de relatórios antigos).
+- Painel de ameaças redesenhado e mostrado logo abaixo do semáforo no modo simples, com o estado de cada
+  app (restrito, desativado, removido) e o histórico de ações.
+- Assistente de ação em etapas (segurança → o que fazer → confirmar → resultado, com os comandos
+  executados). Remover continua exigindo o nome do pacote digitado; as ações reversíveis exigem
+  autorização explícita (`consent`); spyware mercenário exige ciência extra em toda alteração.
+
 ## [0.2.0] — uso nacional
 
 ### Adicionado

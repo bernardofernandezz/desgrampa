@@ -238,7 +238,8 @@ class ScanTests(unittest.TestCase):
         scan(dev, mode="completa")
         forbidden = ("pm uninstall", "pm disable", "pm clear", "pm grant", "pm revoke", "settings put",
                      "settings delete", "rm ", "am ", "cmd role add", "cmd role remove", "svc ", "reboot",
-                     "setprop", "input ", "service call")
+                     "setprop", "input ", "service call", "pm enable", "cmd appops set", "cmd notification",
+                     "dpm ")
         for cmd in dev.commands:
             self.assertFalse(cmd.startswith(forbidden), cmd)
 
@@ -263,14 +264,20 @@ class CalibrationTests(unittest.TestCase):
         self.assertEqual([(f["severity"], f["title"]) for f in life], [("alta", "App de monitoramento conhecido: Life360")])
 
     def test_ios_process_name_matching_android_daemon_is_ignored(self):
+        # como num Xiaomi real: o SELinux nega o stat de /system/bin/gatekeeperd, mas a pasta pode ser listada
+        from desgrampa.checks.processes import SYSTEM_BIN_DIRS
         dev = FakeDevice(extra={
             "ps -A -o USER,PID,NAME": fx.PS + "system 1513 gatekeeperd\n",
-            "ls /system/bin/gatekeeperd /system_ext/bin/gatekeeperd /vendor/bin/gatekeeperd "
-            "/system/bin/hw/gatekeeperd /vendor/bin/hw/gatekeeperd 2>/dev/null": "/system/bin/gatekeeperd\n",
+            f"ls {SYSTEM_BIN_DIRS} 2>/dev/null": "/system/bin:\napexd\ngatekeeperd\nvold\n\n/vendor/bin:\nqseecomd\n",
         })
         r = scan(dev)
         self.assertFalse(any("Pegasus" in f["title"] for f in r["findings"]))
         self.assertTrue(any("gatekeeperd" in n for n in r["notes"]))
+
+    def test_ios_process_name_outside_system_partition_is_reported(self):
+        dev = FakeDevice(extra={"ps -A -o USER,PID,NAME": fx.PS + "u0_a99 4242 gatekeeperd\n"})
+        r = scan(dev)
+        self.assertTrue(any("Pegasus" in f["title"] for f in r["findings"]))
 
     def test_certificate_only_match_without_behaviour_is_high(self):
         from desgrampa.checks import certificates

@@ -20,7 +20,7 @@ Rotas:
     GET  /api/ios                           ferramentas e iPhones conectados
     POST /api/ios/scan                      {udid} (backup pelo cabo) ou {backup_path}, mais {password}
     POST /api/scan                          {serial, mode, pc_network}
-    POST /api/actions                       {report, package, action, confirm, keep_apk, mercenary_ack}
+    POST /api/actions                       {report, package, action, confirm|consent, keep_apk, mercenary_ack, via}
     POST /api/iocs/update                   baixa as bases de indicadores em segundo plano
     POST /api/wireless/pair                 {host, port, code}   depuração sem fio: pareamento
     POST /api/wireless/connect              {host, port}
@@ -57,7 +57,7 @@ from . import (
     report,
     scanner,
 )
-from .checks import mvt
+from .checks import SEVERITIES, mvt
 from .paths import REPORTS_DIR, WEB_DIR
 
 API_VERSION = 4              # a interface avisa quando o servidor em execução é mais antigo que ela
@@ -65,6 +65,7 @@ DEVICE_INFO_CACHE_S = 20     # evita chamar o adb a cada atualização da tela
 SCAN_MODES = ("rapida", "completa")
 
 log = logging.getLogger(__name__)
+PLAN_CONFIRM = "REMOVER"   # digitado uma vez para aprovar as remoções de um plano de limpeza
 
 
 TEMP_PREFIX = "desgrampa-"
@@ -155,7 +156,9 @@ class State:
 
     def start_scan(self, serial, mode, options):
         job = {"id": uuid.uuid4().hex[:12], "state": "running", "progress": 0.0, "step": "Iniciando",
-               "result": None, "error": None, "serial": serial, "mode": mode}
+               "result": None, "error": None, "serial": serial, "mode": mode, "started_at": time.time(),
+               "checks": [{"name": c.NAME, "category": c.CATEGORY, "status": "pending"} for c in scanner.CHECKS],
+               "found": dict.fromkeys(SEVERITIES, 0), "alerts": []}
         with self.lock:
             if self.is_scanning(serial):
                 raise ApiError(409, "Já existe uma varredura em andamento neste aparelho.")
@@ -163,11 +166,23 @@ class State:
 
         def progress(fraction, step):
             job["progress"], job["step"] = round(fraction, 3), step
+            for c in job["checks"]:
+                if c["name"] == step and c["status"] == "pending":
+                    c["status"] = "running"
+
+        def on_check(index, status, found):
+            counts = {s: sum(f.severity == s for f in found) for s in SEVERITIES}
+            job["checks"][index] = {**job["checks"][index], "status": status["status"],
+                                    "reason": status["reason"], "counts": counts}
+            for s, n in counts.items():
+                job["found"][s] += n
+            job["alerts"] += [{"severity": f.severity, "title": f.title, "package": f.package}
+                              for f in found if f.severity in ("critica", "alta")]
 
         def worker():
             try:
                 job["result"] = scanner.run_scan(adb.Device(serial), self.iocs, mode, progress, options,
-                                                 bulletins=self.bulletins)
+                                                 bulletins=self.bulletins, on_check=on_check)
                 job.update(state="done", progress=1.0, step="Concluído")
             except Exception as e:
                 log.exception("varredura de %s falhou", serial)
@@ -318,7 +333,10 @@ class Handler(BaseHTTPRequestHandler):
         job = self.state.scans.get(scan_id)
         if not job:
             raise ApiError(404, "varredura não encontrada")
-        self._send(200, {k: job[k] for k in ("id", "state", "progress", "step", "result", "error", "mode")})
+        live = {k: job[k] for k in ("checks", "found", "alerts") if k in job}
+        if "started_at" in job:
+            live["elapsed_s"] = round(time.time() - job["started_at"])
+        self._send(200, {**{k: job[k] for k in ("id", "state", "progress", "step", "result", "error", "mode")}, **live})
 
     def get_reports(self):
         self._send(200, evidence.list_reports())
@@ -397,10 +415,16 @@ class Handler(BaseHTTPRequestHandler):
         candidate = next((c for c in result["removal_candidates"] if c["package"] == pkg), None)
         if not candidate:
             raise ApiError(400, "este app não está entre as sugestões de remoção deste relatório")
-        if body.get("confirm") != pkg:
+        # remover é definitivo: exige o nome do pacote digitado (ou, no plano de limpeza revisado pelo usuário,
+        # a palavra PLAN_CONFIRM digitada uma vez para o plano todo); as ações reversíveis, o aceite explícito
+        via = "plano" if body.get("via") == "plano" else "individual"
+        typed = body.get("confirm")
+        if action == "uninstall" and typed != pkg and not (via == "plano" and typed == PLAN_CONFIRM):
             raise ApiError(400, "confirmação não confere: digite o nome exato do pacote")
-        if candidate["mercenary"] and not body.get("mercenary_ack"):
-            raise ApiError(400, "confirme que entende o risco de apagar evidências de spyware mercenário")
+        if action != "uninstall" and body.get("consent") is not True and typed != pkg:
+            raise ApiError(400, "confirme que você quer fazer esta alteração no aparelho")
+        if candidate["mercenary"] and action != "enable" and not body.get("mercenary_ack"):
+            raise ApiError(400, "confirme que entende o risco de alterar evidências de spyware mercenário")
 
         serial = result["device"]["serial"]
         self.state.ready_device(serial)
@@ -408,7 +432,7 @@ class Handler(BaseHTTPRequestHandler):
             if self.state.is_scanning(serial):
                 raise ApiError(409, "aguarde a varredura em andamento terminar")
             entry = actions.perform(adb.Device(serial), result["report_dir"], candidate, action,
-                                    keep_apk=bool(body.get("keep_apk", True)))
+                                    keep_apk=bool(body.get("keep_apk", True)), via=via)
         self.state.device_cache.pop(serial, None)
         self._send(200, entry)
 

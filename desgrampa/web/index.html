@@ -100,11 +100,18 @@
       <div class="card progress-card hidden" id="progress">
         <div class="progress-head">
           <span class="spinner" aria-hidden="true"></span>
-          <div class="grow"><strong>Varredura em andamento</strong><div class="muted" id="step">Iniciando</div></div>
+          <div class="grow"><strong>Varredura em andamento</strong>
+            <div class="muted" id="step" aria-live="polite">Iniciando</div></div>
+          <span class="muted small" id="elapsed"></span>
           <span class="pill" id="pct">0%</span>
         </div>
-        <div class="bar"><div id="bar-fill"></div></div>
-        <p class="muted small">Mantenha o aparelho conectado, desbloqueado e com a tela ligada.</p>
+        <div class="bar" role="progressbar" aria-label="Progresso da varredura" aria-valuemin="0" aria-valuemax="100"
+          id="bar"><div id="bar-fill"></div></div>
+        <div class="live-found" id="live-found"></div>
+        <ol class="checklist" id="checklist" aria-label="Verificações"></ol>
+        <div id="live-alerts" aria-live="polite"></div>
+        <p class="muted small">Mantenha o aparelho conectado, desbloqueado e com a tela ligada. Nada é alterado no
+          celular durante a varredura.</p>
       </div>
 
       <div id="result" class="hidden"></div>

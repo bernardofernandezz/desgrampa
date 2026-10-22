@@ -117,8 +117,10 @@ def _device_summary(ctx):
     }
 
 
-def run_scan(device, iocs, mode="rapida", on_progress=None, options=None, save_evidence=True, bulletins=None):
-    """Executa a varredura e devolve o resultado (dict). on_progress(fração, texto) acompanha o andamento."""
+def run_scan(device, iocs, mode="rapida", on_progress=None, options=None, save_evidence=True, bulletins=None,
+             on_check=None):
+    """Executa a varredura e devolve o resultado (dict). on_progress(fração, texto) acompanha o andamento;
+    on_check(índice, status, achados) é chamado ao terminar cada verificação (progresso detalhado na interface)."""
     report_progress = on_progress or (lambda _fraction, _step: None)
     current = {"check": 0}
 
@@ -141,6 +143,8 @@ def run_scan(device, iocs, mode="rapida", on_progress=None, options=None, save_e
         found, status = _run_check(check, ctx)
         findings += found
         check_status.append(status)
+        if on_check:
+            on_check(i - 1, status, found)
 
     findings.sort(key=lambda f: (SEVERITIES.index(f.severity), f.title))
     if not iocs.total_count:
